@@ -1,0 +1,9 @@
+README.md
+setup.py
+boxeye/__init__.py
+boxeye/debug_mode.py
+boxeye/util.py
+boxeye.egg-info/PKG-INFO
+boxeye.egg-info/SOURCES.txt
+boxeye.egg-info/dependency_links.txt
+boxeye.egg-info/top_level.txt

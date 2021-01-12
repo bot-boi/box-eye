@@ -19,19 +19,18 @@ CLIENT_HEIGHT = 540
 
 
 logging.getLogger("PIL").setLevel(logging.CRITICAL)
-logging.basicConfig(format="%(asctime)s-%(pathname)s-"
-                    "%(levelname)s> %(message)s",
+logging.basicConfig(format="%(asctime)s-%(levelname)s-%(funcName)s-%(lineno)s> %(message)s",
                     datefmt="%H:%M:%S", level=logging.DEBUG)
 logger = logging.getLogger("mylogger")
 
 
 client = AdbClient(host="127.0.0.1", port=5037)
 default_device = client.device("emulator-5554")
-client.remote_connect("192.168.1.10", 9999)  # remote emulators
-client.remote_connect("192.168.1.11", 9999)
-device10 = client.device("192.168.1.10:9999")
-device11 = client.device("192.168.1.11:9999")
-device137 = client.device("192.168.48.101:5555")
+# client.remote_connect("192.168.1.10", 9999)  # remote emulators
+# client.remote_connect("192.168.1.11", 9999)
+# device10 = client.device("192.168.1.10:9999")
+# device11 = client.device("192.168.1.11:9999")
+# device137 = client.device("192.168.48.101:5555")
 DEVICE = None
 
 
@@ -103,7 +102,7 @@ def swipe(pt1: Point, pt2: Point, ms=1500):
 def hold(pt: Point, ms=6000):
     x, y = _inputarg_handler(pt)
     pt = Point(x, y)
-    swipe(DEVICE, pt, pt, ms)
+    swipe(pt, pt, ms)
 
 
 # fake device for running tests on stuff without needing a running emulator
@@ -161,9 +160,9 @@ def launch_app(my_app: str):
     if my_app not in current_activity():
         logger.info("launching app {}".format(my_app))
         DEVICE.shell("monkey -p {} 1".format(my_app))
-        logger.info("waiting for {} to load, sleeping 30s..."
-                    .format(my_app))
-        sleep(30)  # TODO: dont blind wait?
+        # logger.info("waiting for {} to load, sleeping 30s..."
+        #             .format(my_app))
+        # sleep(30)  # TODO: dont blind wait?
 
 
 class Pattern():
@@ -701,7 +700,7 @@ class BotRunner:
     def run(self):
         if len(self.scheduler._queue) == 0:
             raise Exception("BotRunner event queue empty on start!")
-        scheduler.run()
+        self.scheduler.run()
 
 
 # =============== what use to be slots.py ==================

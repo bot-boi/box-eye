@@ -107,26 +107,7 @@ def hold(pt: Point, ms=6000):
     swipe(pt, pt, ms)
 
 
-# fake device for running tests on stuff without needing a running emulator
-class TestDevice:
-    def __init__(self, img):
-        if img is None:
-            self.img = None
-            return
-        import io
-        if isinstance(img, str):
-            if ".png" not in img:
-                img += ".png"
-            img = Image.open(img)
-        img = img.convert("RGB")
-        bytes = io.BytesIO()
-        img.save(bytes, format='PNG')
-        self.img = bytes.getvalue()
-
-    def screencap(self):
-        return self.img
-
-
+# ============ ERROR DEFINITIONS ============
 class RetryError(Exception):
     pass
 
@@ -365,15 +346,16 @@ class PatternList(Pattern):
     def locate(self, img=None, incl_names=False):
         if img is None:
             img = screencap()
-        res = None
-        if incl_names:
-            # FIXME BUG HERE ?
-            res = [(p.name, p.locate()) for p in self.data]
-            res = [(n, l) for (n, l) in res if len(l) > 0]  # filter empty
-        else:
-            res = [p.locate() for p in self.data]
-            res = [loc for loc in res if len(loc) > 0]
-        return res
+        names = []
+        loc = []
+        for pattern in self.data:
+            p_loc = pattern.locate()
+            loc = loc + p_loc
+            p_name = pattern.name
+            p_names = len(p_loc) * [p_name]
+            names = names + p_names
+
+        return (names, loc)
 
     def isvisible(self, img=None):
         bools = [p.isvisible(img=img) for p in self.data]
@@ -572,82 +554,6 @@ class Region():
             n = None
         logger.debug("read number as {}".format(n))
         return n
-
-
-# TODO: remove this, popslots uses it?
-class Task():
-    def __init__(self, interval, priority, action, actionargs=(),
-                 interval_on_err=None):
-        self.interval = interval
-        self.priority = priority
-        self.action = action
-        self.actionargs = actionargs
-        if interval_on_err is None:
-            interval_on_err = interval // 4
-        self.interval_on_err = interval_on_err
-        self.time = time.time()
-
-    def __str__(self):
-        return "{}-{}-{}".format(self.action.__name__,
-                                 self.priority,
-                                 self.interval)
-
-    def set_timer(self, ttime):
-        self.time = ttime
-
-    def reschedule(self):
-        self.time = time.time() + self.interval
-
-    # override this
-    def reschedule_on_err(self):
-        self.time = time.time() + self.interval_on_err
-
-    def run(self):
-        self.action(self.actionargs)
-        self.reschedule()
-
-
-class TaskManager():
-    def __init__(self, device):
-        self.device = device
-        self.queue = []
-
-    def enter(self, task: Task):
-        self.queue.append(task)
-
-    def run(self):
-        err_counter = 0
-        # check if err > err_max every err_interval
-        err_interval = 60 * 5
-        err_max = 40
-        err_next_interval = time.time() + err_interval
-        prev_len = len(self.queue)
-        while True:
-            if len(self.queue) != prev_len:
-                prev_len = len(self.queue)
-                self.queue.sort(key="time")  # TODO: get this tested
-                self.queue.sort(key="priority")
-            for i, task in enumerate(self.queue):
-                if time.time() >= task.time:
-                    try:
-                        logger.debug("running task {}".format(task))
-                        task.run()
-                    except RetryError:  # as e:
-                        # reset the task clock for a retry
-                        # print("traceback ", traceback.format_exc())
-                        task.reschedule_on_err()
-                    except Exception as e:
-                        traceback.print_exc()
-                        if err_next_interval >= time.time():
-                            err_counter = 0
-                            err_next_interval = time.time() + err_interval
-                        if err_counter >= err_max:
-                            img = screencap(self.device)
-                            img.save('error.png')
-                            img.show()
-                            raise e
-                        else:
-                            err_counter += 1
 
 
 NOFAIL = False

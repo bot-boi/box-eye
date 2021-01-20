@@ -3,7 +3,6 @@ import logging
 import sched
 import time
 import traceback
-from time import sleep
 
 import pyautogui as pyag
 import pytesseract
@@ -19,7 +18,8 @@ CLIENT_HEIGHT = 540
 
 
 logging.getLogger("PIL").setLevel(logging.CRITICAL)
-logging.basicConfig(format="%(asctime)s-%(levelname)s-%(funcName)s-%(lineno)s> %(message)s",
+logging.basicConfig(format="%(asctime)s-%(levelname)s-%(funcName)s-%(lineno)s>"
+                           " %(message)s",
                     datefmt="%H:%M:%S", level=logging.DEBUG)
 logger = logging.getLogger("mylogger")
 
@@ -97,6 +97,8 @@ def swipe(pt1: Point, pt2: Point, ms=1500):
     x1, y1 = _inputarg_handler(pt1)
     x2, y2 = _inputarg_handler(pt2)
     DEVICE.shell("input swipe {} {} {} {} {}".format(x1, y1, x2, y2, ms))
+    logger.debug("swipe from {},{} to {},{} in {}ms"
+                 .format(x1, y1, x2, y2, ms))
 
 
 def hold(pt: Point, ms=6000):
@@ -141,6 +143,14 @@ class OCRError(Exception):
 
 
 def set_device(device):
+    """
+    set device using device obj or device name
+    """
+    if isinstance(device, str):
+        if "emulator" not in device:
+            ip, port = device.split(":")
+            client.remote_connect(ip, int(port))
+        device = client.device(device)
     global DEVICE
     DEVICE = device
 
@@ -640,32 +650,11 @@ class TaskManager():
                             err_counter += 1
 
 
-# TODO: FIGURE OUT BETTER CONCEPT FOR EVENT ADDER FUNC  !!!UGLY!!!
-def make_main(scheduler, app_pkgname, event_adder_func):
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('device', metavar='DEVICE',
-                        help='the adb device you want to use')
-    parser.add_argument('--game', default='god-of-sky',
-                        help='name of the slot game to play')
-    parser.add_argument('--mode', action='store',
-                        help='select bot mode [DEBUG, NOFAIL]')
-
-    # parse and use args
-    args = parser.parse_args()
-    if "emulator" not in args.device:  # remote device
-        ip, port = args.device.split(":")
-        client.remote_connect(ip, int(port))
-    device = client.device(args.device)
-    game = args.game
-    mode = args.mode
-
-
-    return main, game
+NOFAIL = False
 
 
 class BotRunner:
-    def __init__(self, app_pkgname):
+    def __init__(self, app_pkgname, launch_app=False):
         self.scheduler = sched.scheduler()
         self.app_pkgname = app_pkgname
 
@@ -688,15 +677,20 @@ class BotRunner:
         self.mode = args.mode
         if self.mode == 'DEBUG':
             import core.debug_mode  # run pdb on failure
+        elif self.mode == 'NOFAIL':
+            global NOFAIL
+            NOFAIL = True
 
         set_device(self.device)
-        launch_app(self.app_pkgname)
+        if launch_app:
+            launch_app(self.app_pkgname)
 
     def enter_periodic(self, *args, **kwargs):
         periodic(self.scheduler, *args, **kwargs)
         logger.debug("added periodic event to BotRunner {}"
                      .format(self.app_pkgname))
 
+    # @util.retry_if(NOFAIL, tries=10, delay=5, backoff=4, logger=logger)
     def run(self):
         if len(self.scheduler._queue) == 0:
             raise Exception("BotRunner event queue empty on start!")
@@ -773,24 +767,3 @@ class TextRegion(Region):
             return (False not in result)
         else:
             return (True in result)
-
-
-class Interface:
-    def __init__(self, device):
-        self.device = device
-
-    def open(self) -> bool:  # try to open, return bool
-        pass
-
-
-# class TestRegion(unittest.TestCase):
-#     def setUp(self):
-#         self.device = TestDevice(APP_PATH + "test/surprise-gift.png")
-#         self.region = Region(Point(0, 0), Point(CLIENT_WIDTH - 1,
-#                                                 CLIENT_HEIGHT - 1),
-#                              self.device)
-# 
-#     def test_readboxwords(self):
-#         boxes = self.region.readwordboxes()
-#         logger.debug("readwordboxes {}".format(boxes))
-#         self.assertTrue(len(boxes) > 0)

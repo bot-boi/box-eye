@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageOps
 from ppadb.client import Client as AdbClient
 from pytesseract import Output
 from vectormath import Vector2 as Point
+from retry.api import retry_call
 
 from . import util
 
@@ -556,7 +557,7 @@ class Region():
         return n
 
 
-NOFAIL = False
+NOFAIL = True  # TODO: setter for this doesnt work on retry_if
 
 
 class BotRunner:
@@ -583,9 +584,6 @@ class BotRunner:
         self.mode = args.mode
         if self.mode == 'DEBUG':
             import core.debug_mode  # run pdb on failure
-        elif self.mode == 'NOFAIL':
-            global NOFAIL
-            NOFAIL = True
 
         set_device(self.device)
         if launch_app:
@@ -596,11 +594,15 @@ class BotRunner:
         logger.debug("added periodic event to BotRunner {}"
                      .format(self.app_pkgname))
 
-    # @util.retry_if(NOFAIL, tries=10, delay=5, backoff=4, logger=logger)
     def run(self):
+        logger.info("Running in {} mode".format(self.mode))
         if len(self.scheduler._queue) == 0:
             raise Exception("BotRunner event queue empty on start!")
-        self.scheduler.run()
+        if self.mode == 'NOFAIL':
+            retry_call(self.scheduler.run, tries=50, delay=1,
+                       backoff=2, logger=logger)
+        else:
+            self.scheduler.run()
 
 
 # =============== what use to be slots.py ==================

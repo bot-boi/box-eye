@@ -12,10 +12,10 @@ from decorator import decorator
 
 
 # conditional retry decorator, lets me add stuff like "FAILSAFE-MODE"
-def retry_if(condition, *args, **kwargs):
+def retry_if(_condition, *args, **kwargs):
     @decorator
     def mydecorator(func, *dargs, **dwargs):  # decorator args
-        if not condition:
+        if not _condition:
             return func
         return retry_call(func, fargs=dargs, fkwargs=dwargs,
                           *args, **kwargs)

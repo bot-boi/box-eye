@@ -344,7 +344,7 @@ class PatternList(Pattern):
     def append(self, p: Pattern):
         self.data.append(p)
 
-    def locate(self, img=None, incl_names=False):
+    def locate_names(self, img=None):
         if img is None:
             img = screencap()
         names = []
@@ -357,6 +357,11 @@ class PatternList(Pattern):
             names = names + p_names
 
         return (names, loc)
+
+
+    def locate(self, img=None):
+        return self.locate_names(img=img)[1]
+
 
     def isvisible(self, img=None):
         bools = [p.isvisible(img=img) for p in self.data]

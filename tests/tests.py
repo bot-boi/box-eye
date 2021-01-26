@@ -1,5 +1,5 @@
 import os
-from ..boxeye import util, TextPattern
+from boxeye import util, TextPattern
 
 
 check_vision = util.make_check_vision(os.path.dirname(__file__) + os.sep)

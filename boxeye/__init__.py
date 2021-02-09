@@ -12,49 +12,32 @@ from pytesseract import Output
 from vectormath import Vector2 as Point
 from retry.api import retry_call
 
-from . import util
 
-CLIENT_WIDTH = 960  # always run bots at this res or lower :)
-CLIENT_HEIGHT = 540
-
-
-logging.getLogger("PIL").setLevel(logging.CRITICAL)
-logging.basicConfig(format="%(asctime)s-%(levelname)s-%(funcName)s-%(lineno)s>"
-                           " %(message)s",
-                    datefmt="%H:%M:%S", level=logging.DEBUG)
-logger = logging.getLogger("mylogger")
-
-
+CLIENT_WIDTH = -1
+CLIENT_HEIGHT = -1
+DEVICE = None
 client = AdbClient(host="127.0.0.1", port=5037)
 default_device = client.device("emulator-5554")
-# client.remote_connect("192.168.1.10", 9999)  # remote emulators
-# client.remote_connect("192.168.1.11", 9999)
-# device10 = client.device("192.168.1.10:9999")
-# device11 = client.device("192.168.1.11:9999")
-# device137 = client.device("192.168.48.101:5555")
-DEVICE = None
 
 
-def periodic(scheduler, interval, priority, action, actionargs=(),
-             do_now=True):
-    """periodic.
-    runs a function periodically using sched module
+def binarize(img, threshold=150):
+    """
+    .. _binarize:
 
-    :param scheduler:
-    :param interval:
-    :param priority:
-    :param action:
-    :param actionargs:
-    :param do_now: whether to run at very start or wait for interval
+    0,1 an image by converting to grayscale and then thresholding.
+    Uses a single threshold value.
+
+    :param img: the image to binarize.
+    :type img: PIL.Image
+    :param threshold: img is split into 0,1 along this value (0-255)
+    :type threshold: int
+    :returns: binarized image
+    :rtype: PIL.Image
 
     """
-
-    event = scheduler.enter(interval, priority, periodic,
-                            (scheduler, interval, priority,
-                             action, actionargs))
-    if do_now:
-        action(*actionargs)
-    return event
+    img = ImageOps.grayscale(img)
+    img = img.point(lambda p: p > threshold and 255)
+    return img
 
 
 def screencap(mode="RGB"):
@@ -108,22 +91,6 @@ def hold(pt: Point, ms=6000):
     swipe(pt, pt, ms)
 
 
-# ============ ERROR DEFINITIONS ============
-class RetryError(Exception):
-    pass
-
-
-class NotOpenError(Exception):
-    def __init__(self, func):
-        import inspect
-        self.expression = str(inspect.getsource(func))
-        self.message = "Failed to open {}".format(func)
-
-
-class OCRError(Exception):
-    pass
-
-
 def set_device(device):
     """
     set device using device obj or device name
@@ -135,6 +102,17 @@ def set_device(device):
         device = client.device(device)
     global DEVICE
     DEVICE = device
+
+
+# needs to be called before using boxeye
+def init(device, client_w=960, client_h=540,
+         logger=logging.getLogger("boxeye")):
+    set_device(device)
+    global CLIENT_WIDTH
+    global CLIENT_HEIGHT
+    CLIENT_WIDTH = client_w
+    CLIENT_HEIGHT = client_h
+    logger.info("boxeye initialized")
 
 
 def current_activity() -> str:
@@ -230,7 +208,7 @@ class TextPattern(Pattern):
         # Tesseract Improving Quality
         crop_img = whole_img.crop((p1.x, p1.y, p2.x, p2.y))
         img = ImageOps.scale(crop_img, self.scale)
-        img = util.binarize(img, threshold=self.threshold)
+        img = binarize(img, threshold=self.threshold)
         if self.invert:
             img = ImageOps.invert(img)
         img = img.filter(ImageFilter.GaussianBlur(radius=2))
@@ -319,7 +297,7 @@ class ImagePattern(Pattern):
         if self.grayscale:
             img = ImageOps.grayscale(img)
 
-        # UGLY -- TODO: highlight "UGLY"
+        # UGLY
         # gotta convert to pyag's region (x0, y0, x1, y1)
         p1, p2 = self.region
         region = (int(p1.x), int(p1.y),
@@ -371,7 +349,7 @@ class PatternList(Pattern):
             return True in bools
 
 
-class Region():
+class Region(): # REVIEW
     """Region.
 
     Region is for when you want to read text from
@@ -423,7 +401,7 @@ class Region():
 
         # Tesseract Improving Quality
         img = ImageOps.scale(img, scale)
-        img = util.binarize(img, threshold=threshold)
+        img = binarize(img, threshold=threshold)
         if invert:
             img = ImageOps.invert(img)
         img = img.filter(ImageFilter.GaussianBlur(radius=2))
@@ -444,7 +422,7 @@ class Region():
 
         # Tesseract Improving Quality
         img = ImageOps.scale(crop_img, scale)
-        img = util.binarize(img, threshold=threshold)
+        img = binarize(img, threshold=threshold)
         if invert:
             img = ImageOps.invert(img)
         img = img.filter(ImageFilter.GaussianBlur(radius=2))
@@ -488,7 +466,7 @@ class Region():
         # Tesseract Improving Quality
         crop_img = self.crop(whole_img)
         img = ImageOps.scale(crop_img, scale)
-        img = util.binarize(img, threshold=threshold)
+        img = binarize(img, threshold=threshold)
         if invert:
             img = ImageOps.invert(img)
         img = img.filter(ImageFilter.GaussianBlur(radius=2))
@@ -560,123 +538,3 @@ class Region():
             n = None
         logger.debug("read number as {}".format(n))
         return n
-
-
-NOFAIL = True  # TODO: setter for this doesnt work on retry_if
-
-
-class BotRunner:
-    def __init__(self, app_pkgname, launch_app=False):
-        self.scheduler = sched.scheduler()
-        self.app_pkgname = app_pkgname
-
-        import argparse
-        parser = argparse.ArgumentParser()
-        parser.add_argument('device', metavar='DEVICE',
-                            help='the adb device you want to use')
-        parser.add_argument('--game', default='god-of-sky',
-                            help='name of the slot game to play')
-        parser.add_argument('--mode', action='store',
-                            help='select bot mode [DEBUG, NOFAIL]')
-
-        # parse and use args
-        args = parser.parse_args()
-        if "emulator" not in args.device:  # remote device
-            ip, port = args.device.split(":")
-            client.remote_connect(ip, int(port))
-        self.device = client.device(args.device)
-        self.game = args.game
-        self.mode = args.mode
-        if self.mode == 'DEBUG':
-            import core.debug_mode  # run pdb on failure
-
-        set_device(self.device)
-        if launch_app:
-            launch_app(self.app_pkgname)
-
-    def enter_periodic(self, *args, **kwargs):
-        periodic(self.scheduler, *args, **kwargs)
-        logger.debug("added periodic event to BotRunner {}"
-                     .format(self.app_pkgname))
-
-    def run(self):
-        logger.info("Running in {} mode".format(self.mode))
-        if len(self.scheduler._queue) == 0:
-            raise Exception("BotRunner event queue empty on start!")
-        if self.mode == 'NOFAIL':
-            retry_call(self.scheduler.run, tries=50, delay=1,
-                       backoff=2, logger=logger)
-        else:
-            self.scheduler.run()
-
-
-# =============== what use to be slots.py ==================
-# only here in case of backwards compatibility problems
-# TODO: remove this
-class ImageRegion(Region):
-    def __init__(self, paths, p1: Point, p2: Point, device,
-                 grayscale=False, match_all=True,
-                 confidence=None):
-        imgs = None
-        if not isinstance(paths, list):
-            paths = [paths]
-        if len(paths) == 0:
-            raise Exception("paths is none")
-
-        if isinstance(paths[0], str):
-            paths = list(map(lambda i: i + ".png" if ".png" not in i else i,
-                             paths))
-            imgs = [Image.open(p) for p in paths]
-
-        if grayscale:
-            imgs = [ImageOps.grayscale(i) for i in imgs]
-        else:
-            imgs = [i.convert("RGB") for i in imgs]
-
-        self.imgs = imgs
-        self.grayscale = grayscale
-        self.match_all = match_all
-        self.paths = paths
-        super().__init__(p1, p2, device)
-        # REVIEW: do this different
-        self.confidence = confidence
-
-    def isvisible(self, confidence=0.95) -> bool:
-        if self.confidence is not None:
-            confidence = self.confidence
-        img = screencap(self.device)
-        if self.grayscale:
-            img = ImageOps.grayscale(img)
-
-        res = [pyag.locate(i, img, confidence=confidence,
-                           region=self.region)
-               for i in self.imgs]
-        res = [i for i in res if i is not None]
-        # print(list(self.paths), len(res), len(self.imgs))
-        if self.match_all:
-            return (len(res) == len(self.imgs))  # match all
-        return (len(res) > 0)  # match any
-
-
-class TextRegion(Region):
-    def __init__(self, text, p1, p2, device,
-                 match_all=True, invert=True,
-                 threshold=200, config=""):
-        if type(text) is str:
-            text = [text]
-        self.text = text
-        self.match_all = match_all
-        self.invert = invert
-        self.threshold = threshold
-        self.config = config
-        super().__init__(p1, p2, device)
-
-    def isvisible(self, **kwargs):
-        read = self.readtext(invert=self.invert,
-                             threshold=self.threshold,
-                             config=self.config)
-        result = map(lambda s: s in read, self.text)
-        if self.match_all:
-            return (False not in result)
-        else:
-            return (True in result)

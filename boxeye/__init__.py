@@ -18,7 +18,10 @@ CLIENT_HEIGHT = -1
 DEVICE = None
 client = AdbClient(host="127.0.0.1", port=5037)
 default_device = client.device("emulator-5554")
-
+logging.basicConfig(format="%(asctime)s-%(levelname)s-%(funcName)s-%(lineno)s>"
+                           " %(message)s",
+                    datefmt="%H:%M:%S", level=logging.DEBUG)
+logger = logging.getLogger("boxeye")
 
 def binarize(img, threshold=150):
     """
@@ -105,8 +108,7 @@ def set_device(device):
 
 
 # needs to be called before using boxeye
-def init(device, client_w=960, client_h=540,
-         logger=logging.getLogger("boxeye")):
+def init(device, client_w=960, client_h=540):
     set_device(device)
     global CLIENT_WIDTH
     global CLIENT_HEIGHT

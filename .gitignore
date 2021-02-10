@@ -3,6 +3,7 @@ __pycache__
 *.egg
 *.pyc
 *.swp
+boxeye.egg-info
 build
 dist
 env

@@ -1,27 +1,27 @@
-import io
-import logging
-import sched
-import time
-import traceback
-
 import pyautogui as pyag
 import pytesseract
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
-from ppadb.client import Client as AdbClient
 from pytesseract import Output
 from vectormath import Vector2 as Point
-from retry.api import retry_call
+import logging
+from . import botutils
 
 
-CLIENT_WIDTH = -1
-CLIENT_HEIGHT = -1
-DEVICE = None
-client = AdbClient(host="127.0.0.1", port=5037)
-default_device = client.device("emulator-5554")
-logging.basicConfig(format="%(asctime)s-%(levelname)s-%(funcName)s-%(lineno)s>"
-                           " %(message)s",
-                    datefmt="%H:%M:%S", level=logging.DEBUG)
 logger = logging.getLogger("boxeye")
+
+
+# TODO: how to override these funcs for all instances of boxeye?
+def capture(*args, **kwargs):
+    return botutils.android.capture(*args, **kwargs)
+
+
+def click(*args, **kwargs):
+    return botutils.android.click(*args, **kwargs)
+
+
+def drag(*args, **kwargs):
+    return botutils.android.args(*args, **kwargs)
+
 
 def binarize(img, threshold=150):
     """
@@ -43,100 +43,6 @@ def binarize(img, threshold=150):
     return img
 
 
-def screencap(mode="RGB"):
-    # TODO: make ppadb get raw img, currently gets PNG
-    raw = DEVICE.screencap()
-    img = Image.open(io.BytesIO(raw))  # RGBA
-    img = img.convert(mode)
-    return img
-
-
-def _inputarg_handler(point) -> (int, int):
-    x = None
-    y = None
-
-    # case: Box(l, t, w, h) -- pyautogui
-    if isinstance(point, pyag.pyscreeze.Box):
-        x1, y1, w, h = point
-        x = x1 + (w // 2)
-        y = y1 + (h // 2)
-    elif isinstance(point, tuple) and isinstance(list(point)[0], Point):
-        p1, p2 = point  # case: (Point, Point) aka region
-        dist = p2 - p1
-        idk = p1 + (dist // 2)
-        x = idk.x
-        y = idk.y
-    elif isinstance(point, Point) or isinstance(point, tuple):
-        x, y = point
-    else:
-        breakpoint()
-        raise Exception("bad input args")
-    return (x, y)
-
-
-def tap(point: Point):
-    x, y = _inputarg_handler(point)
-    DEVICE.shell("input tap {} {}".format(x, y))
-    logger.debug("tap @ {} {}".format(x, y))
-
-
-def swipe(pt1: Point, pt2: Point, ms=1500):
-    x1, y1 = _inputarg_handler(pt1)
-    x2, y2 = _inputarg_handler(pt2)
-    DEVICE.shell("input swipe {} {} {} {} {}".format(x1, y1, x2, y2, ms))
-    logger.debug("swipe from {},{} to {},{} in {}ms"
-                 .format(x1, y1, x2, y2, ms))
-
-
-def hold(pt: Point, ms=6000):
-    x, y = _inputarg_handler(pt)
-    pt = Point(x, y)
-    swipe(pt, pt, ms)
-
-
-def set_device(device):
-    """
-    set device using device obj or device name
-    """
-    if isinstance(device, str):
-        if "emulator" not in device:
-            ip, port = device.split(":")
-            client.remote_connect(ip, int(port))
-        device = client.device(device)
-    global DEVICE
-    DEVICE = device
-
-
-# needs to be called before using boxeye
-def init(device, client_w=960, client_h=540):
-    set_device(device)
-    global CLIENT_WIDTH
-    global CLIENT_HEIGHT
-    CLIENT_WIDTH = client_w
-    CLIENT_HEIGHT = client_h
-    logger.info("boxeye initialized")
-
-
-def current_activity() -> str:
-    """
-    get the name of the current (primary?) activity and package
-
-    ...
-    :returns: str in form "package/activity"
-    """
-    return DEVICE.shell("dumpsys activity | grep -E mResumedActivity")
-
-
-def launch_app(my_app: str):
-    # i.e. com.huuuge.casino.slots
-    if my_app not in current_activity():
-        logger.info("launching app {}".format(my_app))
-        DEVICE.shell("monkey -p {} 1".format(my_app))
-        # logger.info("waiting for {} to load, sleeping 30s..."
-        #             .format(my_app))
-        # sleep(30)  # TODO: dont blind wait?
-
-
 class Pattern():
     def __init__(self, name=None, confidence=0.8, region=None):
         """__init__.
@@ -151,24 +57,19 @@ class Pattern():
         """
         if name is None:
             raise Exception("unnamed pattern!")
-        # if name is None:
-        #     name = "NONAME"
         self.name = name
         self.confidence = confidence
-        if region is None:
-            region = (Point(0, 0), Point(CLIENT_WIDTH - 1, CLIENT_HEIGHT - 1))
         self.region = region
 
     def isvisible(self, img=None):
         if img is None:
-            img = screencap()
+            img = capture()
         return len(self.locate(img=img)) > 0
 
 
 # TODO: ignore_case option
 class TextPattern(Pattern):
     """TextPattern."""
-
     def __init__(self, target: str, scale=10,
                  threshold=200, invert=True, config="--psm 8",
                  name=None, debug=False, **kwargs):
@@ -205,7 +106,7 @@ class TextPattern(Pattern):
         whole_img = img
         p1, p2 = self.region
         if whole_img is None:
-            whole_img = screencap()
+            whole_img = capture()
 
         # Tesseract Improving Quality
         crop_img = whole_img.crop((p1.x, p1.y, p2.x, p2.y))
@@ -293,7 +194,7 @@ class ImagePattern(Pattern):
 
     def locate(self, img=None):
         if img is None:
-            img = screencap()
+            img = capture()
         if self.mode != img.mode:
             img = img.convert(self.mode)
         if self.grayscale:
@@ -326,7 +227,7 @@ class PatternList(Pattern):
 
     def locate_names(self, img=None):
         if img is None:
-            img = screencap()
+            img = capture()
         names = []
         loc = []
         for pattern in self.data:
@@ -398,7 +299,7 @@ class Region(): # REVIEW
     def readtext(self, scale=10, threshold=200, invert=True,
                  config="", img=None) -> str:
         if img is None:
-            img = screencap()
+            img = capture()
         img = self.crop(img)
 
         # Tesseract Improving Quality
@@ -419,7 +320,7 @@ class Region(): # REVIEW
     def readboxes(self, scale=10, threshold=200, invert=True,
                   config='', whole_img=None) -> str:
         if whole_img is None:
-            whole_img = screencap()
+            whole_img = capture()
         crop_img = self.crop(whole_img)
 
         # Tesseract Improving Quality
@@ -464,7 +365,7 @@ class Region(): # REVIEW
                       invert=True, config='--psm 11',
                       whole_img=None) -> str:
         if whole_img is None:
-            whole_img = screencap()
+            whole_img = capture()
         # Tesseract Improving Quality
         crop_img = self.crop(whole_img)
         img = ImageOps.scale(crop_img, scale)

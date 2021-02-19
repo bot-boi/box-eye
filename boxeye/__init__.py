@@ -20,7 +20,7 @@ def click(*args, **kwargs):
 
 
 def drag(*args, **kwargs):
-    return botutils.android.args(*args, **kwargs)
+    return botutils.android.drag(*args, **kwargs)
 
 
 def binarize(img, threshold=150):

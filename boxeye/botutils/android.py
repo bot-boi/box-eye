@@ -1,7 +1,7 @@
 import io
-from PIL import Image
+import cv2
+import numpy as np
 import pyautogui as pyag
-import boxeye
 from vectormath import Vector2 as Point
 import logging
 
@@ -34,10 +34,18 @@ def _inputarg_handler(point) -> (int, int):
 
 
 def capture(mode="RGB"):
-    # TODO: make ppadb get raw img, currently gets PNG
-    raw = DEVICE.screencap()
-    img = Image.open(io.BytesIO(raw))  # RGBA
-    img = img.convert(mode)
+    # def decode_raw(bytelist):
+    #     raw = np.array(bytelist)
+    #     r = raw[0::3]  # get every 3rd
+    #     b = raw[1::3]  # ^ offset by 1
+    #     g = raw[2::3]
+    #     return np.dstack((r, g, b))
+    #
+    # TODO: get png=False decoder working
+    #       and check if its faster
+
+    raw = DEVICE.screencap(png=True)
+    img = cv2.imdecode(np.array(raw), cv2.IMREAD_COLOR)
     return img
 
 
@@ -91,4 +99,11 @@ def launch_app(my_app: str):
         DEVICE.shell("monkey -p {} 1".format(my_app))
 
 
-logger.info("configuring boxeye for android emulators")
+logging.info("running in mode: android")
+
+
+def testcap():
+    from ppadb.client import Client
+    client = Client("127.0.0.1", 5037)
+    set_device(client, "192.168.1.10:9999")
+    return capture()

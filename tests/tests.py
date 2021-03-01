@@ -42,7 +42,7 @@ def make_check_vision(path):
 check_vision = make_check_vision(os.path.dirname(__file__) + os.sep)
 
 
-# TODO: better testing
+# TODO: better testing!!!
 def test_txt_pattern():
     # init(None)
     p = TextPattern("RECONNECT", region=(P(0, 0), P(959, 539)), config="")

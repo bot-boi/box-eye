@@ -2,7 +2,9 @@ atomicwrites==1.4.0
 attrs==20.3.0
 colorama==0.4.4
 decorator==4.4.2
+flake8==3.8.4
 iniconfig==1.1.1
+mccabe==0.6.1
 numpy==1.19.5
 opencv-python==4.5.1.48
 packaging==20.8
@@ -11,6 +13,8 @@ pluggy==0.13.1
 -e git+git@github.com:bot-boi/pure-python-adb.git@d75607f142648d46151d96347ebe2bc95220bab5#egg=pure_python_adb
 py==1.10.0
 PyAutoGUI==0.9.52
+pycodestyle==2.6.0
+pyflakes==2.2.0
 PyGetWindow==0.0.9
 PyMsgBox==1.0.9
 pyparsing==2.4.7

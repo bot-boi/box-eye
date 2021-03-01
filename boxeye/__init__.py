@@ -1,8 +1,9 @@
+import cv2
 import pyautogui as pyag
 import pytesseract
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+import re
+import vectormath
 from pytesseract import Output
-from vectormath import Vector2 as Point
 import logging
 from . import botutils
 
@@ -10,7 +11,8 @@ from . import botutils
 logger = logging.getLogger("boxeye")
 
 
-# TODO: how to override these funcs for all instances of boxeye?
+# TODO: require dependency injection on import
+#       like `import boxeye; boxeye = boxeye(dep_inj);`
 def capture(*args, **kwargs):
     return botutils.android.capture(*args, **kwargs)
 
@@ -23,7 +25,11 @@ def drag(*args, **kwargs):
     return botutils.android.drag(*args, **kwargs)
 
 
-def binarize(img, threshold=150):
+def _grayscale(img):
+    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+
+def _binarize(img, threshold=150):
     """
     .. _binarize:
 
@@ -31,16 +37,26 @@ def binarize(img, threshold=150):
     Uses a single threshold value.
 
     :param img: the image to binarize.
-    :type img: PIL.Image
+    :type img: np.array
     :param threshold: img is split into 0,1 along this value (0-255)
-    :type threshold: int
+    :type threshold: float
     :returns: binarized image
-    :rtype: PIL.Image
+    :rtype: np.array
 
     """
-    img = ImageOps.grayscale(img)
-    img = img.point(lambda p: p > threshold and 255)
+    # NOTE: bgr or rgb?
+    img = _grayscale(img)
+    img = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
+    # img = ImageOps.grayscale(img)
+    # img = img.point(lambda p: p > threshold and 255)
     return img
+
+
+class Point(vectormath.Vector2):
+    def __init__(self, x, y):
+        x = int(x)  # default type for Vector2 is float
+        y = int(y)  # screencoords dont have fractions
+        super().__init__(x, y)
 
 
 class Pattern():
@@ -62,12 +78,11 @@ class Pattern():
         self.region = region
 
     def isvisible(self, img=None):
-        if img is None:
-            img = capture()
         return len(self.locate(img=img)) > 0
 
 
-# TODO: ignore_case option
+# TODO: ignore_case option?
+#       ignore case by default?
 class TextPattern(Pattern):
     """TextPattern."""
     def __init__(self, target: str, scale=10,
@@ -102,72 +117,98 @@ class TextPattern(Pattern):
     def __str__(self):
         return "TxtPat-{}".format(self.name)
 
-    def locate(self, img=None):
-        whole_img = img
+    def _tesseract_improve_quality(self, img):
+        """ default preprocessing for pytesseract ocr """
         p1, p2 = self.region
-        if whole_img is None:
-            whole_img = capture()
-
-        # Tesseract Improving Quality
-        crop_img = whole_img.crop((p1.x, p1.y, p2.x, p2.y))
-        img = ImageOps.scale(crop_img, self.scale)
-        img = binarize(img, threshold=self.threshold)
+        print(p1.x)
+        img = img[p1.x: p2.x, p1.y: p2.y]
+        # crop_img = whole_img.crop((p1.x, p1.y, p2.x, p2.y))
+        # img = ImageOps.scale(crop_img, self.scale)
+        img = cv2.resize(img, (0, 0), fx=self.scale, fy=self.scale)
+        img = _binarize(img, threshold=self.threshold)
         if self.invert:
-            img = ImageOps.invert(img)
-        img = img.filter(ImageFilter.GaussianBlur(radius=2))
-        img = img.crop(img.getbbox())
+            img = cv2.bitwise_not(img)
+            # img = ImageOps.invert(img)
+        img = cv2.GaussianBlur(img, (2, 2), cv2.BORDER_DEFAULT)
+        # img = img.filter(ImageFilter.GaussianBlur(radius=2))
+        # img = img.crop(img.getbbox())
         # img = ImageOps.expand(img, border=10, fill='white')
-        # feed to tesseract, remove newlines (\r \n \x0c etc)
-        (_, crop_height) = crop_img.size
-        (width, height) = whole_img.size
-        draw = ImageDraw.Draw(whole_img)
+        return img
+
+    def _tesseract_transform(self, x1, y1, w, h):
+        """
+            transform a tesseract position result from tesseract space
+            (bot left) to screen space (top left origin)
+        """
+
+        # rotate so origin is top left
+        x2 = x1 + w
+        y2 = y1 + h
+        x1 = x1 // self.scale
+        y1 = y1 // self.scale
+        x2 = x2 // self.scale
+        y2 = y2 // self.scale
+
+        # offset to mainscreen
+        mp1, mp2 = self.region  # my point
+        xoff = mp1.x
+        yoff = mp1.y
+        x1 += xoff
+        y1 += yoff
+        x2 += xoff
+        y2 += yoff
+        p1 = Point(x1, y1)
+        p2 = Point(x2, y2)
+        return (p1, p2)
+
+    def _tesseract_parse_output(self, data):
+        """ parse output from pytesseract """
+        logger.debug("parsing tesseract output")
+        keys = data.keys()  # key to index mapping
+        ki_map = {(k, keys.index(k)) for k in keys}  # key -> index map
+
+        out = []
+        for ob in zip(*data.values()):  # ob = object
+            conf = ob[ki_map["conf"]] * 0.01  # normalize to .0,1.
+            text = ob[ki_map["text"]]
+            w = ob[ki_map["width"]]
+            h = ob[ki_map["height"]]
+            x1 = ob[ki_map["left"]]
+            y1 = ob[ki_map["top"]]
+            # p1, p2 = self._tesseract_transform(x1, y1, w, h)
+            region = self._tesseract_transform(x1, y1, w, h)
+            out.append((region, text, conf))
+        return out
+
+    def locate(self, img=None):
+        if img is None:
+            img = capture()
+        img = self._tesseract_improve_quality(img)
         data = pytesseract.image_to_data(img, lang='eng', config=self.config,
                                          output_type=Output.DICT)
-        out = []
-        for text, conf, x1, y1, w, h in zip(data["text"], data["conf"],
-                                            data["left"], data["top"],
-                                            data["width"], data["height"]):
-            conf = float(conf) * 0.01
-            text = text.replace(" ", "")
-            if text == self.target and \
-               conf >= self.confidence and len(text) > 0:
+        raw = self._tesseract_parse_output(data)
+        # parse_output could return just the matches
+        matches = [i for i in raw if re.search(self.target, i[2])]
 
-                x2 = x1 + w  # convert tesseract output to top left origin
-                y2 = y1 + h
-                x1 = x1 // self.scale
-                y1 = y1 // self.scale
-                x2 = x2 // self.scale
-                y2 = y2 // self.scale
-                x1 += p1.x  # offset to mainscreen
-                y1 += p1.y
-                x2 += p1.x
-                y2 += p1.y
-                p1 = Point(x1, y1)
-                p2 = Point(x2, y2)
-                out.append((p1, p2))
-                draw.rectangle([p1.x, p1.y, p2.x, p2.y],
-                               outline="red", width=2)
-
+        p1, p2 = self.region
         if self.debug:
-            whole_img.show()
-            img.show()
-            print(text)
-            breakpoint()
-
-        if self.target not in data["text"]:  # UGLY
-            return []
-        return out
+            raise NotImplementedError
+        #     whole_img.show()
+        #     img.show()
+        #     print(text)
+        #     breakpoint()
+        return matches
 
 
 class ImagePattern(Pattern):
     """ImagePattern."""
 
-    def __init__(self, target: Image, grayscale=False,
+    def __init__(self, target, grayscale=False,
                  mode="RGB", **kwargs):
         """__init__.
 
         :param target:  the image to find
-        :type target: PIL.Image | str
+        :type target: np.ndarray | str
         :param grayscale: apply grayscaling (faster)
         :type grayscale: bool
         :param mode: PIL Image mode (auto convert)
@@ -175,30 +216,33 @@ class ImagePattern(Pattern):
         :param kwargs: See Pattern for more args...
 
         """
-        path = None
+        self.path = None
         if isinstance(target, str):
             self.path = target
-            target = Image.open(target)
-        target = target.convert(mode)
+            target = cv2.imread(target, cv2.IMREAD_COLOR)
+            # it probably isnt necessary to convert to RGB
+            # the output of *capture* will need to be BGR
+            # target = cv2.cvtColor(target, cv2.COLOR_BGR2RGB)
+        # target = target.convert(mode)
         if grayscale:
-            target = ImageOps.grayscale(target)
+            target = _grayscale(target)
+            # target = ImageOps.grayscale(target)
 
-        self.path = path
         self.target = target
         self.grayscale = grayscale
-        self.mode = mode
+        # self.mode = mode
         super().__init__(**kwargs)
 
     def __str__(self):
-        return "ImgPat-{}".format(self.fname)
+        return "IPat::{}".format(self.fname)
 
     def locate(self, img=None):
         if img is None:
             img = capture()
-        if self.mode != img.mode:
-            img = img.convert(self.mode)
+        # if self.mode != img.mode:
+        #     img = img.convert(self.mode)
         if self.grayscale:
-            img = ImageOps.grayscale(img)
+            img = _grayscale(img)
 
         # UGLY
         # gotta convert to pyag's region (x0, y0, x1, y1)
@@ -296,26 +340,6 @@ class Region(): # REVIEW
     def crop(self, img: Image) -> Image:
         return img.crop((self.p1.x, self.p1.y, self.p2.x, self.p2.y))
 
-    def readtext(self, scale=10, threshold=200, invert=True,
-                 config="", img=None) -> str:
-        if img is None:
-            img = capture()
-        img = self.crop(img)
-
-        # Tesseract Improving Quality
-        img = ImageOps.scale(img, scale)
-        img = binarize(img, threshold=threshold)
-        if invert:
-            img = ImageOps.invert(img)
-        img = img.filter(ImageFilter.GaussianBlur(radius=2))
-        img = img.crop(img.getbbox())
-        img = ImageOps.expand(img, border=10, fill='white')  # this is imprtant
-        # img.show()
-        # feed to tesseract, remove newlines (\r \n \x0c etc)
-        text = pytesseract.image_to_string(img, lang='eng', config=config)
-        text = "".join(text.splitlines())
-        logger.debug("read text {}".format(text))
-        return text
 
     def readboxes(self, scale=10, threshold=200, invert=True,
                   config='', whole_img=None) -> str:

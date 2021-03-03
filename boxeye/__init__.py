@@ -44,15 +44,14 @@ def _binarize(img, threshold=150):
     :rtype: np.array
 
     """
-    # NOTE: bgr or rgb?
+    # NOTE: bgr or rgb?  does it matter?
     img = _grayscale(img)
-    img = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
-    # img = ImageOps.grayscale(img)
-    # img = img.point(lambda p: p > threshold and 255)
+    # what is the first value returned here for? \/
+    _, img = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
     return img
 
 
-def Point(x, y):
+def Point(x, y):  # enforce int
     return vectormath.Vector2(x, y).astype(int)
 
 
@@ -115,21 +114,19 @@ class TextPattern(Pattern):
         return "TxtPat-{}".format(self.name)
 
     def _tesseract_improve_quality(self, img):
-        """ default preprocessing for pytesseract ocr """
+        """
+            default preprocessing for pytesseract ocr
+            see the "Tesseract Improving Image Quality" page online
+        """
         p1, p2 = self.region
-        print(p1.x)
-        img = img[p1.x: p2.x, p1.y: p2.y]
-        # crop_img = whole_img.crop((p1.x, p1.y, p2.x, p2.y))
-        # img = ImageOps.scale(crop_img, self.scale)
+        img = img[p1.y: p2.y, p1.x: p2.x]  # NOTE: np.array is y,x
         img = cv2.resize(img, (0, 0), fx=self.scale, fy=self.scale)
         img = _binarize(img, threshold=self.threshold)
         if self.invert:
             img = cv2.bitwise_not(img)
-            # img = ImageOps.invert(img)
-        img = cv2.GaussianBlur(img, (2, 2), cv2.BORDER_DEFAULT)
-        # img = img.filter(ImageFilter.GaussianBlur(radius=2))
-        # img = img.crop(img.getbbox())
-        # img = ImageOps.expand(img, border=10, fill='white')
+        img = cv2.GaussianBlur(img, (5, 5), cv2.BORDER_DEFAULT)
+        # maybe crop to bounding box around text?
+        # and expand borders?
         return img
 
     def _tesseract_transform(self, x1, y1, w, h):
@@ -161,12 +158,12 @@ class TextPattern(Pattern):
     def _tesseract_parse_output(self, data):
         """ parse output from pytesseract """
         logger.debug("parsing tesseract output")
-        keys = data.keys()  # key to index mapping
-        ki_map = {(k, keys.index(k)) for k in keys}  # key -> index map
+        # keys = data.keys()  # key to index mapping
+        ki_map = {k: i for i, k in enumerate(data.keys())}  # key -> index map
 
         out = []
         for ob in zip(*data.values()):  # ob = object
-            conf = ob[ki_map["conf"]] * 0.01  # normalize to .0,1.
+            conf = float(ob[ki_map["conf"]]) * 0.01  # normalize to 0,1
             text = ob[ki_map["text"]]
             w = ob[ki_map["width"]]
             h = ob[ki_map["height"]]
@@ -180,21 +177,43 @@ class TextPattern(Pattern):
     def locate(self, img=None):
         if img is None:
             img = capture()
+        whole_img = img
         img = self._tesseract_improve_quality(img)
         data = pytesseract.image_to_data(img, lang='eng', config=self.config,
                                          output_type=Output.DICT)
         raw = self._tesseract_parse_output(data)
+        # raw format is ((p1, p2), text, confidence)
         # parse_output could return just the matches
-        matches = [i for i in raw if re.search(self.target, i[2])]
+        matches = [i for i in raw if re.search(self.target, i[1])
+                   and i[2] >= self.confidence]
 
-        p1, p2 = self.region
         if self.debug:
-            raise NotImplementedError
-        #     whole_img.show()
-        #     img.show()
-        #     print(text)
-        #     breakpoint()
+            cv2.namedWindow("debug", flags=cv2.WINDOW_GUI_NORMAL)
+            cv2.moveWindow("debug", 0, 0)
+            cv2.imshow("debug", whole_img)
+            cv2.waitKey(6000)
+            cv2.imshow("debug", img)
+            cv2.waitKey(6000)
         return matches
+
+
+class NumberReader(TextPattern):
+    """ reads numbers from an area """
+    def __init__(self, target, config="--oem 0 --psm 8 -c "
+                 "tessedit_char_whitelist=,.0123456789KM", **kwargs):
+        super().__init__(target, config=config, **kwargs)
+
+    def get(self, img=None):
+        raw = self.locate(img=img)
+        raw_strings = [i[1] for i in raw]
+        text = raw_strings[0]  # TODO: pick match with highest conf?
+        text = text.replace(" ", "")  # this stuff is copied from old Region
+        text = text.replace(",", "")  # is it really necessary?
+        text = text.replace("I", "1")
+
+        text = text.replace("K", "000")  # * 1000
+        text = text.replace("M", "000000")  # * 1000000
+        return float(text)
 
 
 class ImagePattern(Pattern):

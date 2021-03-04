@@ -1,28 +1,48 @@
 import cv2
-import pyautogui as pyag
+import numpy as np
 import pytesseract
 import re
 import vectormath
 from pytesseract import Output
 import logging
-from . import botutils
+
+
+# TODO: read this from environment
+MAXDEBUG = False
 
 
 logger = logging.getLogger("boxeye")
 
 
-# TODO: require dependency injection on import
-#       like `import boxeye; boxeye = boxeye(dep_inj);`
+class NoDepsException(Exception):
+    def __init__(self):
+        super().__init__("You need to instantiate boxeye with a dependency.")
+
+
+# TODO: require certain parameters to be present in injected deps
+#       for capture, click, and drag ?  how to do that ?
 def capture(*args, **kwargs):
-    return botutils.android.capture(*args, **kwargs)
+    raise NoDepsException
 
 
 def click(*args, **kwargs):
-    return botutils.android.click(*args, **kwargs)
+    raise NoDepsException
 
 
+# drag should also hold (drag from A to A)
 def drag(*args, **kwargs):
-    return botutils.android.drag(*args, **kwargs)
+    raise NoDepsException
+
+
+def inject(module):
+    """ inject dependencies (capture, click, drag) """
+    global capture
+    global click
+    global drag
+    deps = __import__(module)
+    capture = deps["capture"]
+    click = deps["click"]
+    drag = deps["drag"]
 
 
 def _grayscale(img):
@@ -56,7 +76,7 @@ def Point(x, y):  # enforce int
 
 
 class Pattern():
-    def __init__(self, name=None, confidence=0.8, region=None):
+    def __init__(self, name=None, confidence=0.8, region=None, debug=False):
         """__init__.
 
         :param name: the name of the pattern
@@ -72,6 +92,7 @@ class Pattern():
         self.name = name
         self.confidence = confidence
         self.region = region
+        self.debug = debug
 
     def isvisible(self, img=None):
         return len(self.locate(img=img)) > 0
@@ -83,7 +104,7 @@ class TextPattern(Pattern):
     """TextPattern."""
     def __init__(self, target: str, scale=10,
                  threshold=200, invert=True, config="--psm 8",
-                 name=None, debug=False, **kwargs):
+                 name=None, **kwargs):
         """__init__.
 
         :param target:
@@ -107,7 +128,6 @@ class TextPattern(Pattern):
         if name is None:
             name = self.target
         self.name = name
-        self.debug = debug
         super().__init__(name=name, **kwargs)
 
     def __str__(self):
@@ -119,7 +139,7 @@ class TextPattern(Pattern):
             see the "Tesseract Improving Image Quality" page online
         """
         p1, p2 = self.region
-        img = img[p1.y: p2.y, p1.x: p2.x]  # NOTE: np.array is y,x
+        img = img[p1.y: p2.y, p1.x: p2.x]  # NOTE: np.array is col,row
         img = cv2.resize(img, (0, 0), fx=self.scale, fy=self.scale)
         img = _binarize(img, threshold=self.threshold)
         if self.invert:
@@ -187,7 +207,7 @@ class TextPattern(Pattern):
         matches = [i for i in raw if re.search(self.target, i[1])
                    and i[2] >= self.confidence]
 
-        if self.debug:
+        if self.debug or MAXDEBUG:
             cv2.namedWindow("debug", flags=cv2.WINDOW_GUI_NORMAL)
             cv2.moveWindow("debug", 0, 0)
             cv2.imshow("debug", whole_img)
@@ -248,25 +268,50 @@ class ImagePattern(Pattern):
         self.grayscale = grayscale
         # self.mode = mode
         super().__init__(**kwargs)
+        self.confidence = 0.95
 
     def __str__(self):
         return "IPat::{}".format(self.fname)
 
     def locate(self, img=None):
-        if img is None:
-            img = capture()
+        whole_img = img
+        if whole_img is None:
+            whole_img = capture()
         if self.grayscale:
-            img = _grayscale(img)
+            # self.target is already grayscaled
+            whole_img = _grayscale(whole_img)
 
         # gotta convert to pyag's region (x0, y0, x1, y1)
         p1, p2 = self.region
-        region = (p1.x, p1.y, p2.x, p2.y)
-        # REVIEW \/ ^ do i still need to convert?
-        res = pyag.locate(self.target, img,
-                          confidence=self.confidence,
-                          region=region)
-        logger.debug("located {} at {}".format(self.name, res))
-        return [res] if res is not None else []
+        img = whole_img[p1.y: p2.y, p1.x: p2.x]  # crop to this patterns region
+        res = cv2.matchTemplate(img, self.target, cv2.TM_CCORR)
+        # loc = np.where(res >= self.confidence)
+        # # convert raw to point and reapply offset (p1)
+        # points = [(Point(pt[0], pt[1]) + p1) for pt in zip(*loc[::-1])]
+        if self.grayscale:
+            h, w = self.target.shape
+        else:
+            h, w, _ = self.target.shape
+        # matches = [(pt, pt + Point(pt.x + w, pt.y + h)) for pt in points]
+        _, max_val, _, mloc = cv2.minMaxLoc(res)
+        mloc += p1  # reapply offset cus we cropped earlier
+        matched = []
+        if max_val >= self.confidence:
+            matched.append((Point(mloc[0], mloc[1]),
+                            Point(mloc[0] + w, mloc[1] + h)))
+
+        if self.debug or MAXDEBUG:
+            for p1, p2 in matched:
+                drawn_img = cv2.rectangle(whole_img, tuple(p1), tuple(p2),
+                                          (255, 0, 0), 2)
+            cv2.namedWindow("debug", flags=cv2.WINDOW_GUI_NORMAL)
+            cv2.moveWindow("debug", 0, 0)
+            cv2.imshow("debug", drawn_img)
+            cv2.waitKey(6000)
+        # _, _, tl, _ = cv2.minMaxLoc(res)  # top left
+        # matchregion =
+        logger.debug("located {} at {}".format(self.name, matched))
+        return matched
 
 
 class PatternList(Pattern):

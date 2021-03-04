@@ -34,15 +34,17 @@ def drag(*args, **kwargs):
     raise NoDepsException
 
 
-def inject(module):
+def inject(depname):
     """ inject dependencies (capture, click, drag) """
     global capture
     global click
     global drag
-    deps = __import__(module)
-    capture = deps["capture"]
-    click = deps["click"]
-    drag = deps["drag"]
+    if depname == "android":
+        # this will have to do for now...
+        from boxeye.botutils import android
+        capture = android.capture
+        click = android.click
+        drag = android.drag
 
 
 def _grayscale(img):

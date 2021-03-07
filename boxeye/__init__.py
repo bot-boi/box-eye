@@ -1,4 +1,5 @@
 import cv2
+import os
 import numpy as np
 import pytesseract
 import re
@@ -7,8 +8,11 @@ from pytesseract import Output
 import logging
 
 
-# TODO: read this from environment
-MAXDEBUG = False
+MAXDEBUG = os.environ["MAXDEBUG"]
+if MAXDEBUG == "True":
+    MAXDEBUG = True
+else:
+    MAXDEBUG = False
 
 
 logger = logging.getLogger("boxeye")
@@ -227,6 +231,8 @@ class NumberReader(TextPattern):
 
     def get(self, img=None):
         raw = self.locate(img=img)
+        if len(raw) <= 0:
+            return None
         raw_strings = [i[1] for i in raw]
         text = raw_strings[0]  # TODO: pick match with highest conf?
         text = text.replace(" ", "")  # this stuff is copied from old Region
@@ -270,7 +276,6 @@ class ImagePattern(Pattern):
         self.grayscale = grayscale
         # self.mode = mode
         super().__init__(**kwargs)
-        self.confidence = 0.95
 
     def __str__(self):
         return "IPat::{}".format(self.fname)
@@ -286,7 +291,8 @@ class ImagePattern(Pattern):
         # gotta convert to pyag's region (x0, y0, x1, y1)
         p1, p2 = self.region
         img = whole_img[p1.y: p2.y, p1.x: p2.x]  # crop to this patterns region
-        res = cv2.matchTemplate(img, self.target, cv2.TM_CCORR)
+        res = cv2.matchTemplate(img, self.target, cv2.TM_CCORR_NORMED)
+        # res = cv2.normalize(res, res, 0, 1, cv2.NORM_MINMAX, -1)
         # loc = np.where(res >= self.confidence)
         # # convert raw to point and reapply offset (p1)
         # points = [(Point(pt[0], pt[1]) + p1) for pt in zip(*loc[::-1])]
@@ -303,6 +309,7 @@ class ImagePattern(Pattern):
                             Point(mloc[0] + w, mloc[1] + h)))
 
         if self.debug or MAXDEBUG:
+            drawn_img = whole_img
             for p1, p2 in matched:
                 drawn_img = cv2.rectangle(whole_img, tuple(p1), tuple(p2),
                                           (255, 0, 0), 2)
@@ -310,8 +317,7 @@ class ImagePattern(Pattern):
             cv2.moveWindow("debug", 0, 0)
             cv2.imshow("debug", drawn_img)
             cv2.waitKey(6000)
-        # _, _, tl, _ = cv2.minMaxLoc(res)  # top left
-        # matchregion =
+
         logger.debug("located {} at {}".format(self.name, matched))
         return matched
 

@@ -1,10 +1,9 @@
-import io
-import cv2
+import logging
+
+import cv2 as cv
 import numpy as np
 import pyautogui as pyag
 from vectormath import Vector2 as Point
-import logging
-
 
 logger = logging.getLogger("boxeye")
 DEVICE = None
@@ -45,7 +44,7 @@ def capture(mode="RGB"):
     #       and check if its faster
 
     raw = DEVICE.screencap(png=True)
-    img = cv2.imdecode(np.array(raw), cv2.IMREAD_COLOR)
+    img = cv.imdecode(np.array(raw), cv.IMREAD_COLOR)
     return img
 
 

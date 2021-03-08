@@ -1,12 +1,12 @@
-import cv2
+import logging
 import os
-import numpy as np
-import pytesseract
 import re
+
+import cv2 as cv
+# import numpy as np
+import pytesseract
 import vectormath
 from pytesseract import Output
-import logging
-
 
 MAXDEBUG = os.environ["MAXDEBUG"]
 if MAXDEBUG == "True":
@@ -52,7 +52,8 @@ def inject(depname):
 
 
 def _grayscale(img):
-    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    """ grayscale an image with cv """
+    return cv.cvtColor(img, cv.COLOR_RGB2GRAY)
 
 
 def _binarize(img, threshold=150):
@@ -70,10 +71,9 @@ def _binarize(img, threshold=150):
     :rtype: np.array
 
     """
-    # NOTE: bgr or rgb?  does it matter?
     img = _grayscale(img)
     # what is the first value returned here for? \/
-    _, img = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY)
+    _, img = cv.threshold(img, threshold, 255, cv.THRESH_BINARY)
     return img
 
 
@@ -146,11 +146,11 @@ class TextPattern(Pattern):
         """
         p1, p2 = self.region
         img = img[p1.y: p2.y, p1.x: p2.x]  # NOTE: np.array is col,row
-        img = cv2.resize(img, (0, 0), fx=self.scale, fy=self.scale)
+        img = cv.resize(img, (0, 0), fx=self.scale, fy=self.scale)
         img = _binarize(img, threshold=self.threshold)
         if self.invert:
-            img = cv2.bitwise_not(img)
-        img = cv2.GaussianBlur(img, (5, 5), cv2.BORDER_DEFAULT)
+            img = cv.bitwise_not(img)
+        img = cv.GaussianBlur(img, (5, 5), cv.BORDER_DEFAULT)
         # maybe crop to bounding box around text?
         # and expand borders?
         return img
@@ -214,12 +214,12 @@ class TextPattern(Pattern):
                    and i[2] >= self.confidence]
 
         if self.debug or MAXDEBUG:
-            cv2.namedWindow("debug", flags=cv2.WINDOW_GUI_NORMAL)
-            cv2.moveWindow("debug", 0, 0)
-            cv2.imshow("debug", whole_img)
-            cv2.waitKey(6000)
-            cv2.imshow("debug", img)
-            cv2.waitKey(6000)
+            cv.namedWindow("debug", flags=cv.WINDOW_GUI_NORMAL)
+            cv.moveWindow("debug", 0, 0)
+            cv.imshow("debug", whole_img)
+            cv.waitKey(6000)
+            cv.imshow("debug", img)
+            cv.waitKey(6000)
         return matches
 
 
@@ -263,10 +263,10 @@ class ImagePattern(Pattern):
         self.path = None
         if isinstance(target, str):
             self.path = target
-            target = cv2.imread(target, cv2.IMREAD_COLOR)
+            target = cv.imread(target, cv.IMREAD_COLOR)
             # it probably isnt necessary to convert to RGB
             # the output of *capture* will need to be BGR
-            # target = cv2.cvtColor(target, cv2.COLOR_BGR2RGB)
+            # target = cv.cvtColor(target, cv.COLOR_BGR2RGB)
         # target = target.convert(mode)
         if grayscale:
             target = _grayscale(target)
@@ -291,8 +291,8 @@ class ImagePattern(Pattern):
         # gotta convert to pyag's region (x0, y0, x1, y1)
         p1, p2 = self.region
         img = whole_img[p1.y: p2.y, p1.x: p2.x]  # crop to this patterns region
-        res = cv2.matchTemplate(img, self.target, cv2.TM_CCORR_NORMED)
-        # res = cv2.normalize(res, res, 0, 1, cv2.NORM_MINMAX, -1)
+        res = cv.matchTemplate(img, self.target, cv.TM_CCORR_NORMED)
+        # res = cv.normalize(res, res, 0, 1, cv.NORM_MINMAX, -1)
         # loc = np.where(res >= self.confidence)
         # # convert raw to point and reapply offset (p1)
         # points = [(Point(pt[0], pt[1]) + p1) for pt in zip(*loc[::-1])]
@@ -301,7 +301,7 @@ class ImagePattern(Pattern):
         else:
             h, w, _ = self.target.shape
         # matches = [(pt, pt + Point(pt.x + w, pt.y + h)) for pt in points]
-        _, max_val, _, mloc = cv2.minMaxLoc(res)
+        _, max_val, _, mloc = cv.minMaxLoc(res)
         mloc += p1  # reapply offset cus we cropped earlier
         matched = []
         if max_val >= self.confidence:
@@ -311,12 +311,12 @@ class ImagePattern(Pattern):
         if self.debug or MAXDEBUG:
             drawn_img = whole_img
             for p1, p2 in matched:
-                drawn_img = cv2.rectangle(whole_img, tuple(p1), tuple(p2),
-                                          (255, 0, 0), 2)
-            cv2.namedWindow("debug", flags=cv2.WINDOW_GUI_NORMAL)
-            cv2.moveWindow("debug", 0, 0)
-            cv2.imshow("debug", drawn_img)
-            cv2.waitKey(6000)
+                drawn_img = cv.rectangle(whole_img, tuple(p1), tuple(p2),
+                                         (255, 0, 0), 2)
+            cv.namedWindow("debug", flags=cv.WINDOW_GUI_NORMAL)
+            cv.moveWindow("debug", 0, 0)
+            cv.imshow("debug", drawn_img)
+            cv.waitKey(6000)
 
         logger.debug("located {} at {}".format(self.name, matched))
         return matched

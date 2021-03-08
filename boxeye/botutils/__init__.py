@@ -1,8 +1,7 @@
 import argparse
-import sched
 import logging
-from . import android
-from . import extra
+import sched
+
 from .extra import periodic
 
 

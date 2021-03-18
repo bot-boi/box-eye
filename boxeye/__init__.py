@@ -7,15 +7,19 @@ import cv2 as cv
 import pytesseract
 import vectormath
 from pytesseract import Output
+from .botutils import android
 
-MAXDEBUG = os.environ["MAXDEBUG"]
-if MAXDEBUG == "True":
+
+try:
+    MAXDEBUG = os.environ["MAXDEBUG"]
     MAXDEBUG = True
-else:
+except KeyError:
     MAXDEBUG = False
 
 
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("boxeye")
+logger.setLevel(logging.DEBUG)
 
 
 class NoDepsException(Exception):
@@ -26,29 +30,29 @@ class NoDepsException(Exception):
 # TODO: require certain parameters to be present in injected deps
 #       for capture, click, and drag ?  how to do that ?
 def capture(*args, **kwargs):
-    raise NoDepsException
+    return android.capture(*args, **kwargs)
 
 
 def click(*args, **kwargs):
-    raise NoDepsException
+    return android.click(*args, **kwargs)
 
 
 # drag should also hold (drag from A to A)
 def drag(*args, **kwargs):
-    raise NoDepsException
+    return android.drag(*args, **kwargs)
 
 
-def inject(depname):
-    """ inject dependencies (capture, click, drag) """
-    global capture
-    global click
-    global drag
-    if depname == "android":
-        # this will have to do for now...
-        from boxeye.botutils import android
-        capture = android.capture
-        click = android.click
-        drag = android.drag
+# def inject(depname):
+#     """ inject dependencies (capture, click, drag) """
+#     global capture
+#     global click
+#     global drag
+#     if depname == "android":
+#         # this will have to do for now...
+#         from boxeye.botutils import android
+#         capture = android.capture
+#         click = android.click
+#         drag = android.drag
 
 
 def _grayscale(img):
@@ -82,7 +86,7 @@ def Point(x, y):  # enforce int
 
 
 class Pattern():
-    def __init__(self, name=None, confidence=0.8, region=None, debug=False):
+    def __init__(self, name=None, confidence=0.95, region=None, debug=False):
         """__init__.
 
         :param name: the name of the pattern
@@ -114,7 +118,7 @@ class TextPattern(Pattern):
         """__init__.
 
         :param target:
-        :type target: str
+        :type target: regex
         :param scale: preproc scaling
         :type scale: int
         :param threshold: binarization threshold
@@ -220,6 +224,7 @@ class TextPattern(Pattern):
             cv.waitKey(6000)
             cv.imshow("debug", img)
             cv.waitKey(6000)
+        logger.debug("got {} matches for {}".format(len(matches), self.name))
         return matches
 
 
@@ -337,6 +342,7 @@ class PatternList(Pattern):
     def locate_names(self, img=None):
         if img is None:
             img = capture()
+
         names = []
         loc = []
         for pattern in self.data:

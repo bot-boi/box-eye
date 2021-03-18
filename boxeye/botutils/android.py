@@ -43,7 +43,7 @@ def capture(mode="RGB"):
     # TODO: get png=False decoder working
     #       and check if its faster
 
-    raw = DEVICE.screencap(png=True)
+    raw = DEVICE.screencap()
     img = cv.imdecode(np.array(raw), cv.IMREAD_COLOR)
     return img
 

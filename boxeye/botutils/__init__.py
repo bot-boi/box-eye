@@ -1,6 +1,7 @@
 import argparse
 import logging
 import sched
+from retry import retry
 
 from .extra import periodic
 
@@ -18,6 +19,7 @@ class ColorBot():
     def init(self):
         raise NotImplementedError
 
+    @retry()
     def run(self):
         self.scheduler.run()
 

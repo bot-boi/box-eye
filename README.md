@@ -1,6 +1,5 @@
 TODO
   
-  - rename repo to "boxeye" for clarity (box-eye is not a valid package name in python)
   - SRL-like color finding (take from pysrl repo)
   - Standardize interface, currently has:
     + TextPattern

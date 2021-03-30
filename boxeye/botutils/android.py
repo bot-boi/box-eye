@@ -71,6 +71,10 @@ def click(point: Point, duration=None):
     logger.debug("tap @ {} {}".format(x, y))
 
 
+def keypress(keycode):
+    DEVICE.shell("input keyevent {}".format(keycode))
+
+
 def set_device(client, device):
     """ set device (assign emulator) """
     if "emulator" not in device:

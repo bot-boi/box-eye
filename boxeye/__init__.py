@@ -42,6 +42,9 @@ def drag(*args, **kwargs):
     return android.drag(*args, **kwargs)
 
 
+def keypress(*args, **kwargs):
+    return android.keypress(*args, **kwargs)
+
 # def inject(depname):
 #     """ inject dependencies (capture, click, drag) """
 #     global capture

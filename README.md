@@ -1,6 +1,8 @@
 TODO
   
   - SRL-like color finding (take from pysrl repo)
+  - Fix tests (broken)
+    + more comprehensive testing...
   - Standardize interface, currently has:
     + TextPattern
     + ImagePattern

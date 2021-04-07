@@ -3,10 +3,12 @@ import os
 import re
 
 import cv2 as cv
-# import numpy as np
+import numpy as np
 import pytesseract
 import vectormath
+
 from pytesseract import Output
+
 from .botutils import android
 
 
@@ -90,14 +92,13 @@ def Point(x, y):  # enforce int
 
 class Pattern():
     def __init__(self, name=None, confidence=0.95, region=None, debug=False):
-        """__init__.
-
-        :param name: the name of the pattern
-        :type name: str
-        :param confidence: how confident of match u need to be
-        :type confidence: float
-        :param region: the area to search
-        :type region: (Point, Point)
+        """
+            name : str
+                the name of the pattern (for log)
+            confidence : float = 0.95
+                the minimum confidence required to match
+            region : (boxeye.Point, boxeye.Point)
+                the area of the screen to search in
 
         """
         if name is None:
@@ -227,6 +228,7 @@ class TextPattern(Pattern):
             cv.waitKey(6000)
             cv.imshow("debug", img)
             cv.waitKey(6000)
+            breakpoint()
         logger.debug("got {} matches for {}".format(len(matches), self.name))
         return matches
 
@@ -242,14 +244,17 @@ class NumberReader(TextPattern):
         if len(raw) <= 0:
             return None
         raw_strings = [i[1] for i in raw]
-        text = raw_strings[0]  # TODO: pick match with highest conf?
-        text = text.replace(" ", "")  # this stuff is copied from old Region
-        text = text.replace(",", "")  # is it really necessary?
-        text = text.replace("I", "1")
-
-        text = text.replace("K", "000")  # * 1000
-        text = text.replace("M", "000000")  # * 1000000
-        return float(text)
+        text = raw_strings[0]  # TODO: pick match with highest confidence?
+        if self.debug:
+            breakpoint()
+        if "K" in text:
+            text = text.replace("K", "")
+            return float(text) * 1000.0
+        elif "M" in text:
+            text = text.replace("M", "")
+            return float(text) * 1000000.0
+        else:
+            return float(text)
 
 
 class ImagePattern(Pattern):
@@ -325,6 +330,7 @@ class ImagePattern(Pattern):
             cv.moveWindow("debug", 0, 0)
             cv.imshow("debug", drawn_img)
             cv.waitKey(6000)
+            breakpoint()
 
         logger.debug("located {} at {}".format(self.name, matched))
         return matched
@@ -365,3 +371,76 @@ class PatternList(Pattern):
             return False not in bools
         else:  # match any
             return True in bools
+
+
+class ColorPattern(Pattern):
+    def __init__(self, cts, cluster=5, min_thresh=50, max_thresh=5000,
+                 **kwargs):
+        """
+            cts : CTS
+                - the *color tolerance speed (aka method)*
+            cluster : int = 5 (pixels)
+                - the radius to use when clustering
+        """
+        self.cluster = cluster
+        self.cts = cts
+        self.min_thresh = min_thresh
+        self.max_thresh = max_thresh
+        super().__init__(**kwargs)
+
+    def locate_points(self, img=None):
+        """ Find all points in an image that match a cts.
+            Then group them with radius, apply thresholds
+            and maybe some other stuff.
+        """
+        (h, w, _) = img.shape  # REVIEW ?
+        if self.region is None:
+            region = (Point(0, 0), Point(w, h))
+        else:
+            region = self.region
+
+        p1, p2 = region
+        img = img[p1.y:p2.y, p1.x:p2.x]  # apply bounds
+        y, x = np.where(np.logical_and(np.all(img <= self.cts.max, 2),
+                                       np.all(img >= self.cts.min, 2)))
+        points = np.column_stack((x, y))  # x,y order for PointArrays
+        if len(points) <= 0:
+            logging.debug("failed to find {}".format(self.name))
+            return
+
+        # clustering
+        clusters = np.zeros(len(points), dtype='uint32')
+        while True:  # loop until all points are clustered
+            unclustered = clusters == 0
+            remaining = np.count_nonzero(unclustered)
+            if remaining == 0:
+                break
+            candidate = points[unclustered][np.random.randint(remaining)]
+            dist = np.sum(np.square(points - candidate), axis=1)
+            nearby_mask = dist <= self.cluster * self.cluster
+            overlaps = set(list(clusters[nearby_mask]))
+            overlaps.remove(0)
+            if len(overlaps) == 0:
+                G = np.max(clusters)+1  # new cluster
+            else:
+                G = np.min(list(overlaps))  # prefer smaller numbers
+            clusters[nearby_mask] = G
+            for g in overlaps:
+                if g == G or g == 0:
+                    continue
+                clusters[clusters == g] = G
+        unique, counts = np.unique(clusters, return_counts=True)
+        clustered_points = np.array([points[clusters == c] for c in unique])
+        filtered_points = [clus for clus in clustered_points
+                           if len(clus) >= self.min_thresh
+                           and len(clus) <= self.max_thresh]
+        return filtered_points
+
+    def locate(self, img=None):
+        points = self.locate_points(img=img)
+        # REVIEW: does this work ?  points sorted or no ?
+        regions = [(Point(cl[0][0], cl[0][1]),
+                    Point(cl[-1][0], cl[-1][1]))
+                   for cl in points]
+        logging.debug("found @ {}".format(regions))
+        return regions

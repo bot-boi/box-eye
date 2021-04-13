@@ -9,8 +9,9 @@ import ppadb.client
 import pyperclip
 import PySimpleGUI as sg
 
-from boxeye import capture, ColorPattern, Point
+from boxeye import capture, ColorPattern, ImagePattern, Point, TextPattern
 from boxeye.botutils.extra import get_app_path
+from boxeye.botutils import debug_mode
 from boxeye.cts import CTS2
 
 
@@ -41,6 +42,11 @@ def decode_base64(img_str):
     return cv.imdecode(raw, cv.IMREAD_COLOR)
 
 
+def image_to_string(img):
+    """ np.ndarray -> bytes pysimplegui can display in Graph element """
+    return cv.imencode('.png', img)[1].tobytes()
+
+
 class AutoColorAid:
     """ All modes will use an Input element to output the user selected region.
         The region will be selected using the mouse (left click), and will be
@@ -58,19 +64,20 @@ class AutoColorAid:
         actions_menu = [
             [sg.Button("capture"), sg.Button("exit")],
             [sg.Button("draw"), sg.Button("erase")],
-            [sg.FileBrowse("load"), sg.In(key="file-load", enable_events=True)],
-            [sg.Button("clipboard")]
-        ]
-        # always visible
-        pattern_menu = [
-            # [sg.In(default_text="192.168.1.138:9999", key="-TARGET-DEVICE-")]
-            [sg.Multiline(size=(None, 3), key="pattern-out")],
+            [sg.FileBrowse("load"),
+             sg.In(key="file-load", enable_events=True)],
+            [sg.Button("clipboard")],
             [sg.ButtonMenu("mode",
                            ["",
                             [MODE_COLORPATTERN_EVENT,
                              MODE_IMAGEPATTERN_EVENT,
                              MODE_TEXTPATTERN_EVENT]],
-                           key="mode")],
+                           key="mode"),
+             sg.Text("", size=(10, 1), key="mode-out")],
+        ]
+        pattern_menu = [
+            # [sg.In(default_text="192.168.1.138:9999", key="-TARGET-DEVICE-")]
+            [sg.Multiline(size=(None, 3), key="pattern-out")],
             [sg.In(tooltip="confidence", default_text="0.6",
                    key="confidence")],
             [sg.In(tooltip="region", default_text="0 0, -1 -1",
@@ -79,7 +86,7 @@ class AutoColorAid:
         ]
         primary_menu = sg.Frame("primary menu", actions_menu + pattern_menu)
         colpat_menu = \
-            sg.Column([
+            sg.pin(sg.Column([
                         [sg.In(tooltip="clustering radius",
                                default_text="5",
                                key="colpat-cluster-radius")],
@@ -91,22 +98,32 @@ class AutoColorAid:
                                key="colpat-max-thresh")],
                         [sg.Check("pick color", key="pick-colors")],
                     ],
-                    key=MODE_COLORPATTERN)
+                    key=MODE_COLORPATTERN, visible=False))
         imgpat_menu = \
-            sg.Column([[sg.Check("grayscale", key="grayscale",
-                                 enable_events=True)]],
-                      key=MODE_IMAGEPATTERN, visible=False)
+            sg.pin(sg.Column([[sg.Button("set needle", key="imgpat-needle-set",
+                                  tooltip="cut img to current region and use" \
+                                          " as search needle"
+                                  )],
+                       [sg.Check("grayscale", key="imgpat-grayscale")],
+                       [sg.Graph(background_color="red", key="imgpat-needle-preview",
+                                 graph_top_right=(2000, 0),
+                                 graph_bottom_left=(0, 2000),
+                                 canvas_size=(300, 300))]],
+                      key=MODE_IMAGEPATTERN, visible=True))
         txtpat_menu = \
-            sg.Column([
-                        [sg.In(default_text="", key="scale",
-                               enable_events=True, tooltip="scale up by")],
-                        [sg.In(default_text="", key="binarize-threshold",
-                               enable_events=True, tooltip="threshold to binarize by")],
-                        [sg.Check("invert", key="invert",
-                                  enable_events=True, tooltip="invert the binary image")],
-                        [sg.In(default_text="", key="config",
-                               enable_events=True, tooltip="args for tesseract ocr")]
-                    ], key=MODE_TEXTPATTERN, visible=False)
+            sg.pin(sg.Column([
+                        [sg.In(key="txtpat-pattern-text",
+                               tooltip="text to search for (regex)")],
+                        [sg.In(default_text="10", key="txtpat-scale",
+                               tooltip="scale up by")],
+                        [sg.In(default_text="150",
+                               key="txtpat-binary-threshold",
+                               tooltip="threshold to binarize by")],
+                        [sg.Check("invert", key="txtpat-invert",
+                                  tooltip="invert the binary image")],
+                        [sg.In(default_text="--psm 8", key="txtpat-config",
+                               tooltip="args for tesseract ocr")]
+                    ], key=MODE_TEXTPATTERN, visible=False))
 
         # color list
         colors_mode = sg.LISTBOX_SELECT_MODE_MULTIPLE
@@ -134,15 +151,18 @@ class AutoColorAid:
                            location=(0, 20), size=(1366, 748))
         self.colors = []  # MODE_COLORPATTERN
         self.current_img = None
-        self.current_img_needle_path = None  # MODE_IMAGEPATTERN
         self.current_img_path = None
-        self.region = []
         self.mode = MODE_IMAGEPATTERN
+        self.needle_path = DATA_DIR + "needle.png"  # MODE_IMAGEPATTERN
+        self.needle_region = []  # MODE_IMAGEPATTERN
+        window.read(timeout=1)
+        window['mode-out'].update(value=MODE_IMAGEPATTERN)
+        self.region = []
         self.window = window
 
         self.window.read(timeout=1)
         if default_img_path:
-            self.current_img = encode_base64(default_img_path)
+            self.current_img = cv.imread(default_img_path)
             self.current_img_path = default_img_path
             self.current_img_clear()
 
@@ -164,6 +184,7 @@ class AutoColorAid:
 
     def _event_draw_colpat(self, values):
         # MODE_COLORPATTERN
+        # TODO: display CTS color range in preview
         conf = float(self.window['confidence'].get())
         region = self.region
         cluster = int(self.window['colpat-cluster-radius'].get())
@@ -180,33 +201,51 @@ class AutoColorAid:
                       "     name={})\n" \
                       .format(cts, conf, region, cluster, mf, Mf, name)
         self.window["pattern-out"].update(pattern_str)
-        img = decode_base64(self.current_img)
-        result = pattern.locate(img=img)
+        result = pattern.locate(img=self.current_img)
         self._draw_regions(result)
 
     def _event_draw_imgpat(self, values):
         # MODE_IMAGEPATTERN
-        if self.current_img_needle_path is None:
-            raise Exception("bad user input")
+        # TODO: file save dialog for needle
         conf = float(self.window['confidence'].get())
-        grayscale = self.window['grayscale'].get()
+        grayscale = bool(self.window['imgpat-grayscale'].get())
         name = self.window['pattern-name'].get()
-        pattern = ImagePattern(self.current_img_needle_path, region=self.region,
+        pattern = ImagePattern(self.needle_path, region=self.region,
                                confidence=conf, grayscale=grayscale,
                                name=name)
         pattern_str = "IPat({}, region={},\n" \
                       "     confidence={}, grayscale={},\n" \
                       "     name={})\n" \
-                      .format(self.current_img_needle_path, region,
+                      .format(self.needle_path,
+                              self.needle_region,
                               conf, grayscale, name)
         self.window["pattern-out"].update(pattern_str)
-        img = decode_base64(self.current_img)
-        result = pattern.locate(img=img)
+        result = pattern.locate(img=self.current_img)
         self._draw_regions(result)
 
-
     def _event_draw_txtpat(self, values):
-        pass
+        # MODE_TEXTPATTERN
+        # TODO: preview graph, show img post processing
+        pattern_text = self.window['txtpat-pattern-text'].get()
+        region_str = self._stringify_region(self.region)
+        conf = float(self.window['confidence'].get())
+        scale = int(self.window['txtpat-scale'].get())
+        invert = bool(self.window['txtpat-invert'].get())
+        thresh = int(self.window['txtpat-binary-threshold'].get())
+        config = self.window['txtpat-config'].get()
+        name = self.window['pattern-name'].get()
+        pattern = TextPattern(pattern_text, region=self.region,
+                              confidence=conf, scale=scale, invert=invert,
+                              threshold=thresh, config=config, name=name)
+        pattern_str = "TPat(\"{}\", region={},\n" \
+                      "     confidence={}, invert={},\n" \
+                      "     scale={}, threshold={},\n" \
+                      "     config={}, name={})\n" \
+                      .format(pattern_text, region_str, conf,
+                              invert, scale, thresh, config, name)
+        self.window["pattern-out"].update(pattern_str)
+        result = pattern.locate(img=self.current_img)
+        self._draw_regions(result)
 
     def _event_draw(self, values):
         if self.mode == MODE_COLORPATTERN:
@@ -223,8 +262,9 @@ class AutoColorAid:
     def _event_file_load(self, values):
         fpath = self.window["file-load"].get()
         logging.debug("Loading file {}".format(fpath))
-        img_str = encode_base64(fpath)
-        self.current_img = img_str
+
+        img = cv.imread(fpath)
+        self.current_img = img
         self.current_img_clear()
 
     def _event_click_graph(self, values):
@@ -233,8 +273,7 @@ class AutoColorAid:
         if self.mode == MODE_COLORPATTERN and \
                 self.window['pick-colors'].get() == 1:
             # pick colors for color tolerance generation (CTS2)
-            img = decode_base64(self.current_img)
-            color = CTS2(img[y][x], 0, 0, 0)
+            color = CTS2(self.current_img[y][x], 0, 0, 0)
             self.colors.append(color)
             self.window['color-list'].update(values=[c.asarray()[:3]
                                                      for c in self.colors])
@@ -258,16 +297,35 @@ class AutoColorAid:
             self.window[MODE_IMAGEPATTERN].update(visible=False)
             self.window[MODE_TEXTPATTERN].update(visible=False)
             self.window[MODE_COLORPATTERN].update(visible=True)
+            self.window['mode-out'].update(value=MODE_COLORPATTERN)
         elif mode == MODE_IMAGEPATTERN_EVENT:
             self.mode = MODE_IMAGEPATTERN
             self.window[MODE_COLORPATTERN].update(visible=False)
             self.window[MODE_TEXTPATTERN].update(visible=False)
             self.window[MODE_IMAGEPATTERN].update(visible=True)
+            self.window['mode-out'].update(value=MODE_IMAGEPATTERN)
         elif mode == MODE_TEXTPATTERN_EVENT:
             self.mode = MODE_TEXTPATTERN
             self.window[MODE_COLORPATTERN].update(visible=False)
             self.window[MODE_IMAGEPATTERN].update(visible=False)
             self.window[MODE_TEXTPATTERN].update(visible=True)
+            self.window['mode-out'].update(value=MODE_TEXTPATTERN)
+
+    def _event_imgpat_needle_set(self, values):
+        # imgpat-needle-set
+        if len(self.region) != 2:
+            logging.debug("select region first")
+            return
+        self.needle_region = self.region
+        p1, p2 = self.needle_region
+        img = self.current_img[p1.y: p2.y, p1.x: p2.x]
+        cv.imwrite(self.needle_path, img)
+        # col, row, dep = img.shape
+        # img = img.reshape((col * row, dep))  # reshape for encoding
+        # img_str = base64.b64encode(img.tobytes())
+        img_str = image_to_string(img)
+        self.window['imgpat-needle-preview'].erase()
+        self.window['imgpat-needle-preview'].draw_image(location=(0, 0), data=img_str)
 
     def _parse_region(self, region_str):
         region = []
@@ -284,8 +342,8 @@ class AutoColorAid:
 
     def current_img_clear(self):
         self.window['imgview'].erase()
-        self.window['imgview'].draw_image(data=self.current_img,
-                                          location=(0, 0))
+        img_str = image_to_string(self.current_img)
+        self.window['imgview'].draw_image(data=img_str, location=(0, 0))
 
     def handle_event(self, event, values):
         event_handlers = {
@@ -297,6 +355,7 @@ class AutoColorAid:
             'exit': lambda values: self.window.close(),
             None: lambda values: self.window.close(),
             'file-load': self._event_file_load,
+            'imgpat-needle-set': self._event_imgpat_needle_set,
             'imgview': self._event_click_graph,
             'mode': self._event_mode_change,
         }

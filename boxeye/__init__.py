@@ -208,7 +208,7 @@ class TextPattern(Pattern):
             out.append((region, text, conf))
         return out
 
-    def locate(self, img=None):
+    def locate_names(self, img=None):
         if img is None:
             img = capture()
         whole_img = img
@@ -231,6 +231,10 @@ class TextPattern(Pattern):
             breakpoint()
         logger.debug("got {} matches for {}".format(len(matches), self.name))
         return matches
+
+    def locate(self, img=None):
+        """ return just regions """
+        return [i[0] for i in self.locate_names(img=img)]
 
 
 class NumberReader(TextPattern):

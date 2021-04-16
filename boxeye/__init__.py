@@ -10,6 +10,7 @@ import vectormath
 from pytesseract import Output
 
 from .botutils import android
+from .cts import CTS2
 
 
 try:
@@ -387,6 +388,8 @@ class ColorPattern(Pattern):
                 - the radius to use when clustering
         """
         self.cluster = cluster
+        if isinstance(cts, list):
+            cts = CTS2.fromarray(cts)
         self.cts = cts
         self.min_thresh = min_thresh
         self.max_thresh = max_thresh

@@ -3,10 +3,12 @@ import os
 import re
 
 import cv2 as cv
-# import numpy as np
+import numpy as np
 import pytesseract
 import vectormath
+
 from pytesseract import Output
+
 from .botutils import android
 
 
@@ -30,6 +32,7 @@ class NoDepsException(Exception):
 # TODO: require certain parameters to be present in injected deps
 #       for capture, click, and drag ?  how to do that ?
 def capture(*args, **kwargs):
+    """ aka screencap """
     return android.capture(*args, **kwargs)
 
 
@@ -59,24 +62,25 @@ def keypress(*args, **kwargs):
 
 
 def _grayscale(img):
-    """ grayscale an image with cv """
+    """ grayscale an image with opencv """
     return cv.cvtColor(img, cv.COLOR_RGB2GRAY)
 
 
 def _binarize(img, threshold=150):
-    """
-    .. _binarize:
-
-    0,1 an image by converting to grayscale and then thresholding.
+    """ 0,1 an image by converting to grayscale and then thresholding.
     Uses a single threshold value.
 
-    :param img: the image to binarize.
-    :type img: np.array
-    :param threshold: img is split into 0,1 along this value (0-255)
-    :type threshold: float
-    :returns: binarized image
-    :rtype: np.array
+    Parameters
+    ----------
+    img : np.ndarray
+        the image to binarize
+    threshold : int
+        img is split into 0,1 along this value (0-255)
 
+    Returns
+    -------
+        img : np.ndarray
+            the binarized image
     """
     img = _grayscale(img)
     # what is the first value returned here for? \/
@@ -84,21 +88,34 @@ def _binarize(img, threshold=150):
     return img
 
 
-def Point(x, y):  # enforce int
+def Point(x, y):
+    """ Wrapper for vectormath.Vector2 that forces int """
     return vectormath.Vector2(x, y).astype(int)
 
 
 class Pattern():
+    """ The Pattern base type.
+    A pattern will always have the following attributes:
+        * name
+        * confidence
+        * region
+        * debug
+        * isvisible
+        * locate
+    """
     def __init__(self, name=None, confidence=0.95, region=None, debug=False):
-        """__init__.
+        """ Pattern Constructor
 
-        :param name: the name of the pattern
-        :type name: str
-        :param confidence: how confident of match u need to be
-        :type confidence: float
-        :param region: the area to search
-        :type region: (Point, Point)
-
+        Parameters
+        ----------
+        name : str
+            the name of the pattern (for log)
+        confidence : float = 0.95
+            the minimum confidence required to match
+        region : (boxeye.Point, boxeye.Point)
+            the area of the screen to search in
+        debug : bool
+            true if this pattern is in debug mode
         """
         if name is None:
             raise Exception("unnamed pattern!")
@@ -108,30 +125,31 @@ class Pattern():
         self.debug = debug
 
     def isvisible(self, img=None):
+        """ check if pattern is visible """
         return len(self.locate(img=img)) > 0
 
 
 # TODO: ignore_case option?
 #       ignore case by default?
 class TextPattern(Pattern):
-    """TextPattern."""
+    """ Search for text, match against regex """
     def __init__(self, target: str, scale=10,
                  threshold=200, invert=True, config="--psm 8",
                  name=None, **kwargs):
-        """__init__.
+        """ Initialize a TextPattern
 
-        :param target:
-        :type target: regex
-        :param scale: preproc scaling
-        :type scale: int
-        :param threshold: binarization threshold
-        :type threshold: int
-        :param invert: whether to invert or not
-        :type invert: bool
-        :param config: tesseract config
-        :type config: str
-        :param kwargs: See Pattern for more args...
-
+        Parameters
+        ----------
+        target : regex
+            the regular expression to match against
+        scale : int
+            scale text during image preprocessing (5-10)
+        threshold : int
+            binarization threshold during image preprocessing
+        invert : bool
+            invert image during preprocessing (after binarization)
+        config : str
+            tesseract configuration
         """
         self.target = target
         self.scale = scale
@@ -147,27 +165,37 @@ class TextPattern(Pattern):
         return "TxtPat-{}".format(self.name)
 
     def _tesseract_improve_quality(self, img):
-        """
-            default preprocessing for pytesseract ocr
-            see the "Tesseract Improving Image Quality" page online
+        """ Default preprocessing for pytesseract ocr, see the "Tesseract
+            Improving Image Quality" page online for more info.
+
+            This is where cropping, scaling, binarization, and inversion
+            are applied.  Also does some default Gaussian blur.
         """
         p1, p2 = self.region
-        img = img[p1.y: p2.y, p1.x: p2.x]  # NOTE: np.array is col,row
+        img = img[p1.y: p2.y, p1.x: p2.x]
         img = cv.resize(img, (0, 0), fx=self.scale, fy=self.scale)
         img = _binarize(img, threshold=self.threshold)
         if self.invert:
             img = cv.bitwise_not(img)
         img = cv.GaussianBlur(img, (5, 5), cv.BORDER_DEFAULT)
-        # maybe crop to bounding box around text?
-        # and expand borders?
         return img
 
     def _tesseract_transform(self, x1, y1, w, h):
-        """
-            transform a tesseract position result from tesseract space
-            (bot left) to screen space (top left origin)
-        """
+        """ Transform a tesseract position result from tesseract space
+            (bot left) to screen space (top left origin).
 
+            Parameters
+            ----------
+            x1, y1: int
+                the top left corner of the region we want to rotate
+            w, h: int
+                the width and height of the region
+
+            Returns
+            -------
+            region : (Point, Point)
+                the newly transformed region
+        """
         # rotate so origin is top left
         x2 = x1 + w
         y2 = y1 + h
@@ -189,9 +217,16 @@ class TextPattern(Pattern):
         return (p1, p2)
 
     def _tesseract_parse_output(self, data):
-        """ parse output from pytesseract """
-        logger.debug("parsing tesseract output")
-        # keys = data.keys()  # key to index mapping
+        """ Handle raw output from tesseract.
+
+            Basically just transforms points and outputs
+            them plus text and confidence.
+
+            Parameters
+            ----------
+            data : Dict
+                the raw output from pytesseract.data_to_data (?)
+        """
         ki_map = {k: i for i, k in enumerate(data.keys())}  # key -> index map
 
         out = []
@@ -207,7 +242,20 @@ class TextPattern(Pattern):
             out.append((region, text, conf))
         return out
 
-    def locate(self, img=None):
+    def locate_names(self, img=None):
+        """ Special function that locates names and confidence in addition
+            to the usual region.
+
+            Parameters
+            ----------
+            img : np.ndarray
+                optional image to use for locating
+
+            Returns
+            -------
+            matches : [((Point, Point), text, confidence)]
+                successful match results!
+        """
         if img is None:
             img = capture()
         whole_img = img
@@ -227,51 +275,74 @@ class TextPattern(Pattern):
             cv.waitKey(6000)
             cv.imshow("debug", img)
             cv.waitKey(6000)
+            breakpoint()
         logger.debug("got {} matches for {}".format(len(matches), self.name))
         return matches
 
+    def locate(self, img=None):
+        """ Wrapper for locate_names, returns only the region.
+
+            Parameters
+            ----------
+            img : np.ndarray
+                optional image to use for locating
+
+            Returns
+            -------
+            matches : [(Point, Point)]
+                regions of successful matches!
+        """
+        return [i[0] for i in self.locate_names(img=img)]
+
 
 class NumberReader(TextPattern):
-    """ reads numbers from an area """
+    """ Exactly the same as TextPattern but only reads numbers.
+        This is due to the tesseract *config* property.
+    """
     def __init__(self, target, config="--oem 0 --psm 8 -c "
                  "tessedit_char_whitelist=,.0123456789KM", **kwargs):
         super().__init__(target, config=config, **kwargs)
 
     def get(self, img=None):
+        """ Locate and convert found text to numbers.
+        """
         raw = self.locate(img=img)
         if len(raw) <= 0:
             return None
         raw_strings = [i[1] for i in raw]
-        text = raw_strings[0]  # TODO: pick match with highest conf?
-        text = text.replace(" ", "")  # this stuff is copied from old Region
-        text = text.replace(",", "")  # is it really necessary?
-        text = text.replace("I", "1")
-
-        text = text.replace("K", "000")  # * 1000
-        text = text.replace("M", "000000")  # * 1000000
-        return float(text)
+        text = raw_strings[0]  # TODO: pick match with highest confidence?
+        if self.debug:
+            breakpoint()
+        if "K" in text:  # 100K
+            text = text.replace("K", "")
+            return float(text) * 1000.0
+        elif "M" in text:
+            text = text.replace("M", "")  # 1M
+            return float(text) * 1000000.0
+        else:
+            return float(text)
 
 
 class ImagePattern(Pattern):
-    """ImagePattern."""
-
+    """ Search for an image. """
     def __init__(self, target, grayscale=False,
                  mode="RGB", **kwargs):
-        """__init__.
+        """ Initialize a new ImagePattern
 
-        :param target:  the image to find
-        :type target: np.ndarray | str
-        :param grayscale: apply grayscaling (faster)
-        :type grayscale: bool
-        :param mode: PIL Image mode (auto convert)
-        :type mode: str
-        :param kwargs: See Pattern for more args...
-
+            Parameters
+            ----------
+            target : str | np.ndarray
+                the target image or image path (aka needle)
+            grayscale : bool
+                locate using grayscale
+            mode : str
+                image mode, unused (always RGB)
         """
         self.path = None
         if isinstance(target, str):
             self.path = target
             target = cv.imread(target, cv.IMREAD_COLOR)
+            # REVIEW
             # it probably isnt necessary to convert to RGB
             # the output of *capture* will need to be BGR
             # target = cv.cvtColor(target, cv.COLOR_BGR2RGB)
@@ -289,6 +360,18 @@ class ImagePattern(Pattern):
         return "IPat::{}".format(self.fname)
 
     def locate(self, img=None):
+        """ Find the image pattern.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in (aka haystack), otherwise capture is used
+
+            Returns
+            -------
+            matches : [(Point, Point)]
+                list of regions where matches occur
+        """
         whole_img = img
         if whole_img is None:
             whole_img = capture()
@@ -325,13 +408,25 @@ class ImagePattern(Pattern):
             cv.moveWindow("debug", 0, 0)
             cv.imshow("debug", drawn_img)
             cv.waitKey(6000)
+            breakpoint()
 
         logger.debug("located {} at {}".format(self.name, matched))
         return matched
 
 
 class PatternList(Pattern):
+    """ Operations for collections of Patterns
+    """
     def __init__(self, data=[], match_all=False, **kwargs):
+        """ Initialize a PatternList.
+
+            Parameters
+            ----------
+            data : [Pattern1, ...]
+                the patterns to include in this pattern list
+            match_all : bool
+                when to return True on isvisible  REVIEW
+        """
         self.data = data
         self.match_all = match_all
         super().__init__(**kwargs)
@@ -340,9 +435,23 @@ class PatternList(Pattern):
         return "PList-{}".format(self.name)
 
     def append(self, p: Pattern):
+        """ Add a Pattern to the PatternList.
+        """
         self.data.append(p)
 
     def locate_names(self, img=None):
+        """ Locate all Patterns in the PatternList.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in, otherwise capture is used
+
+            Returns
+            -------
+            matches : ([str], [(Point, Point)])
+                result of all matching patterns in *names, regions* format
+        """
         if img is None:
             img = capture()
 
@@ -357,11 +466,141 @@ class PatternList(Pattern):
         return (names, loc)
 
     def locate(self, img=None):
+        """ Same as locate_names minus the names.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in, otherwise capture is used
+
+
+            Returns
+            -------
+            matches : [(Point, Point)]
+                regions of all matched patterns
+        """
         return self.locate_names(img=img)[1]
 
     def isvisible(self, img=None):
+        """ Check if all or any Patterns in the PatternList
+            are visible.  Behaviour defined by match_all property.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in, otherwise capture is used
+
+            Returns
+            -------
+            visible : bool
+                whether the pattern is visible or not
+        """
         bools = [p.isvisible(img=img) for p in self.data]
         if self.match_all:
             return False not in bools
         else:  # match any
             return True in bools
+
+
+class ColorPattern(Pattern):
+    """ Pattern for finding a cluster of colored points.
+    """
+    def __init__(self, cts, cluster=5, min_thresh=50, max_thresh=5000,
+                 **kwargs):
+        """ Initialize a ColorPattern.
+
+            Parameters
+            ----------
+            cts : CTS
+                the *color tolerance speed (aka method)*
+            cluster : int = 5 (pixels)
+                the radius to use when clustering
+            min_thresh : int
+                the minimum points for a cluster to be valid
+            max_thresh : int
+                the maximum points for a cluster to be valid
+        """
+        self.cluster = cluster
+        self.cts = cts
+        self.min_thresh = min_thresh
+        self.max_thresh = max_thresh
+        super().__init__(**kwargs)
+
+    def locate_points(self, img=None):
+        """ Find all points in an image that match a cts.
+            Then group them with radius, apply thresholds
+            and maybe some other stuff.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in, otherwise capture is used
+
+            Returns
+            -------
+            points : [[Point, ...]]
+                the found points clustered into a 2d array
+        """
+        (h, w, _) = img.shape  # REVIEW ?
+        if self.region is None:
+            region = (Point(0, 0), Point(w, h))
+        else:
+            region = self.region
+
+        p1, p2 = region
+        img = img[p1.y:p2.y, p1.x:p2.x]  # apply bounds
+        y, x = np.where(np.logical_and(np.all(img <= self.cts.max, 2),
+                                       np.all(img >= self.cts.min, 2)))
+        points = np.column_stack((x, y))  # x,y order for PointArrays
+        if len(points) <= 0:
+            logging.debug("failed to find {}".format(self.name))
+            return
+
+        # clustering
+        clusters = np.zeros(len(points), dtype='uint32')
+        while True:  # loop until all points are clustered
+            unclustered = clusters == 0
+            remaining = np.count_nonzero(unclustered)
+            if remaining == 0:
+                break
+            candidate = points[unclustered][np.random.randint(remaining)]
+            dist = np.sum(np.square(points - candidate), axis=1)
+            nearby_mask = dist <= self.cluster * self.cluster
+            overlaps = set(list(clusters[nearby_mask]))
+            overlaps.remove(0)
+            if len(overlaps) == 0:
+                G = np.max(clusters)+1  # new cluster
+            else:
+                G = np.min(list(overlaps))  # prefer smaller numbers
+            clusters[nearby_mask] = G
+            for g in overlaps:
+                if g == G or g == 0:
+                    continue
+                clusters[clusters == g] = G
+        unique, counts = np.unique(clusters, return_counts=True)
+        clustered_points = np.array([points[clusters == c] for c in unique])
+        filtered_points = [clus for clus in clustered_points
+                           if len(clus) >= self.min_thresh
+                           and len(clus) <= self.max_thresh]
+        return filtered_points
+
+    def locate(self, img=None):
+        """ Same as locate_points except returns regions instead.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in, otherwise capture is used
+
+            Returns
+            -------
+            regions : [(Point, Point), ...]
+                regions of all clusters found by locate_points
+        """
+        points = self.locate_points(img=img)
+        # REVIEW: does this work ?  points sorted or no ?
+        regions = [(Point(cl[0][0], cl[0][1]),
+                    Point(cl[-1][0], cl[-1][1]))
+                   for cl in points]
+        logging.debug("found @ {}".format(regions))
+        return regions

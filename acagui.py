@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+""" acagui.py is a gui tool for generating boxeye Patterns.
+"""
 import base64
 import logging
 from time import sleep
@@ -31,31 +32,55 @@ DATA_DIR = get_app_path(__file__)
 
 
 def encode_base64(fpath):
+    """ open an image file and encode as base64
+
+        Parameters:
+        -----------
+            fpath - the path of the target file
+
+        Returns:
+        ________
+            a base64 string representation of file
+
+    """
     with open(fpath, "rb") as f:
         res = base64.b64encode(f.read())
     return res
 
 
 def decode_base64(img_str):
+    """ convert a base64 str to opencv image
+
+        Parameters:
+        -----------
+            img_str - the encoded image
+
+        Returns:
+        ________
+            an opencv image (numpy array)
+
+    """
     decode_b64 = base64.b64decode(img_str)
     raw = np.fromstring(decode_b64, dtype='uint8')
     return cv.imdecode(raw, cv.IMREAD_COLOR)
 
 
 def image_to_string(img):
-    """ np.ndarray -> bytes pysimplegui can display in Graph element """
+    """ Converts an image for display in ACA's Graph element (the image viewer)
+
+        Parameters:
+        ___________
+            img: the image (numpy array) to display
+
+        Returns:
+        ________
+            byte string representation of input image
+    """
     return cv.imencode('.png', img)[1].tobytes()
 
 
 class AutoColorAid:
-    """ All modes will use an Input element to output the user selected region.
-        The region will be selected using the mouse (left click), and will be
-        drawn always.  Editing the Input element will update the region drawn
-        on the screen.
-
-        In mode colpat a listbox will be used to display the user selected
-        colors.
-    """
+    """ ACA GUI !!! """
     def __init__(self, default_img_path=None):
 
         # buttons and stuff
@@ -167,9 +192,13 @@ class AutoColorAid:
             self.current_img_clear()
 
     def _event_capture(self, values):
+        """ capture the screen
+        """
         raise NotImplementedError
 
     def _event_clipboard(self, values):
+        """ copy to clipboard, *clipboard* btn
+        """
         if len(self.colors) > 0 and self.window.mode == MODE_COLORPATTERN:
             r = CTS2.from_colors(self.colors)
             resultstr = 'CTS2({}, {}, {}, {}, {}, {})' \
@@ -177,13 +206,18 @@ class AutoColorAid:
             pyperclip.copy(resultstr)
 
     def _draw_regions(self, regions):
+        """ draw regions returned by boxeye Pattern.locate
+            onto the image viewer
+        """
         for p1, p2 in regions:
             self.window['imgview'] \
                 .draw_rectangle(top_left=p1, bottom_right=p2,
                                 line_color="red")
 
     def _event_draw_colpat(self, values):
-        # MODE_COLORPATTERN
+        """ MODE_COLORPATTERN draw event
+            this is where all the finding/generating happens
+        """
         # TODO: display CTS color range in preview
         conf = float(self.window['confidence'].get())
         region = self.region
@@ -205,7 +239,9 @@ class AutoColorAid:
         self._draw_regions(result)
 
     def _event_draw_imgpat(self, values):
-        # MODE_IMAGEPATTERN
+        """ MODE_IMAGEPATTERN draw event
+            this is where all the finding/generating happens
+        """
         # TODO: file save dialog for needle
         conf = float(self.window['confidence'].get())
         grayscale = bool(self.window['imgpat-grayscale'].get())
@@ -224,7 +260,9 @@ class AutoColorAid:
         self._draw_regions(result)
 
     def _event_draw_txtpat(self, values):
-        # MODE_TEXTPATTERN
+        """ MODE_TEXTPATTERN draw event
+            this is where all the finding/generating happens
+        """
         # TODO: preview graph, show img post processing
         pattern_text = self.window['txtpat-pattern-text'].get()
         region_str = self._stringify_region(self.region)
@@ -248,6 +286,9 @@ class AutoColorAid:
         self._draw_regions(result)
 
     def _event_draw(self, values):
+        """ handle draw event (button *draw*)
+            run the appropriate draw event for the current mode
+        """
         if self.mode == MODE_COLORPATTERN:
             self._event_draw_colpat(values)
         elif self.mode == MODE_IMAGEPATTERN:
@@ -256,10 +297,13 @@ class AutoColorAid:
             self._event_draw_txtpat(values)
 
     def _event_erase(self, values):
-        # remove marks from the image view
+        """ remove marks from the image view """
         self.current_img_clear()
 
     def _event_file_load(self, values):
+        """ user load file (button *load*)
+            only works with .png
+        """
         fpath = self.window["file-load"].get()
         logging.debug("Loading file {}".format(fpath))
 
@@ -268,6 +312,7 @@ class AutoColorAid:
         self.current_img_clear()
 
     def _event_click_graph(self, values):
+        """ click event for image viewer """
         pos = values['imgview']
         x, y = pos
         if self.mode == MODE_COLORPATTERN and \
@@ -290,6 +335,7 @@ class AutoColorAid:
                 self.window['region'].update(value=region_str)
 
     def _event_mode_change(self, values):
+        """ triggered when user changes mode (multibutton *mode*) """
         mode = values['mode']
         self.mode = mode
         if mode == MODE_COLORPATTERN_EVENT:
@@ -312,7 +358,11 @@ class AutoColorAid:
             self.window['mode-out'].update(value=MODE_TEXTPATTERN)
 
     def _event_imgpat_needle_set(self, values):
-        # imgpat-needle-set
+        """ set the image search needle to the
+            currently selected region (of haystack).
+
+            MODE_IMAGEPATTERN, imgpat-needle-set
+        """
         if len(self.region) != 2:
             logging.debug("select region first")
             return

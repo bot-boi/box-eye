@@ -32,6 +32,7 @@ class NoDepsException(Exception):
 # TODO: require certain parameters to be present in injected deps
 #       for capture, click, and drag ?  how to do that ?
 def capture(*args, **kwargs):
+    """ aka screencap """
     return android.capture(*args, **kwargs)
 
 
@@ -61,24 +62,25 @@ def keypress(*args, **kwargs):
 
 
 def _grayscale(img):
-    """ grayscale an image with cv """
+    """ grayscale an image with opencv """
     return cv.cvtColor(img, cv.COLOR_RGB2GRAY)
 
 
 def _binarize(img, threshold=150):
-    """
-    .. _binarize:
-
-    0,1 an image by converting to grayscale and then thresholding.
+    """ 0,1 an image by converting to grayscale and then thresholding.
     Uses a single threshold value.
 
-    :param img: the image to binarize.
-    :type img: np.array
-    :param threshold: img is split into 0,1 along this value (0-255)
-    :type threshold: float
-    :returns: binarized image
-    :rtype: np.array
+    Parameters
+    ----------
+    img : np.ndarray
+        the image to binarize
+    threshold : int
+        img is split into 0,1 along this value (0-255)
 
+    Returns
+    ______
+        img : np.ndarray
+            the binarized image
     """
     img = _grayscale(img)
     # what is the first value returned here for? \/
@@ -86,20 +88,34 @@ def _binarize(img, threshold=150):
     return img
 
 
-def Point(x, y):  # enforce int
+def Point(x, y):
+    """ Wrapper for vectormath.Vector2 that forces int """
     return vectormath.Vector2(x, y).astype(int)
 
 
 class Pattern():
+    """ The Pattern base type.
+    A pattern will always have the following attributes:
+        * name
+        * confidence
+        * region
+        * debug
+        * isvisible
+        * locate
+    """
     def __init__(self, name=None, confidence=0.95, region=None, debug=False):
-        """
-            name : str
-                the name of the pattern (for log)
-            confidence : float = 0.95
-                the minimum confidence required to match
-            region : (boxeye.Point, boxeye.Point)
-                the area of the screen to search in
+        """ Pattern Constructor
 
+        Parameters
+        ----------
+        name : str
+            the name of the pattern (for log)
+        confidence : float = 0.95
+            the minimum confidence required to match
+        region : (boxeye.Point, boxeye.Point)
+            the area of the screen to search in
+        debug : bool
+            true if this pattern is in debug mode
         """
         if name is None:
             raise Exception("unnamed pattern!")
@@ -109,30 +125,31 @@ class Pattern():
         self.debug = debug
 
     def isvisible(self, img=None):
+        """ check if pattern is visible """
         return len(self.locate(img=img)) > 0
 
 
 # TODO: ignore_case option?
 #       ignore case by default?
 class TextPattern(Pattern):
-    """TextPattern."""
+    """ Search for text, match against regex """
     def __init__(self, target: str, scale=10,
                  threshold=200, invert=True, config="--psm 8",
                  name=None, **kwargs):
-        """__init__.
+        """ Initialize a TextPattern
 
-        :param target:
-        :type target: regex
-        :param scale: preproc scaling
-        :type scale: int
-        :param threshold: binarization threshold
-        :type threshold: int
-        :param invert: whether to invert or not
-        :type invert: bool
-        :param config: tesseract config
-        :type config: str
-        :param kwargs: See Pattern for more args...
-
+        Parameters
+        ----------
+        target : regex
+            the regular expression to match against
+        scale : int
+            scale text during image preprocessing (5-10)
+        threshold : int
+            binarization threshold during image preprocessing
+        invert : bool
+            invert image during preprocessing (after binarization)
+        config : str
+            tesseract configuration
         """
         self.target = target
         self.scale = scale
@@ -148,27 +165,37 @@ class TextPattern(Pattern):
         return "TxtPat-{}".format(self.name)
 
     def _tesseract_improve_quality(self, img):
-        """
-            default preprocessing for pytesseract ocr
-            see the "Tesseract Improving Image Quality" page online
+        """ Default preprocessing for pytesseract ocr, see the "Tesseract
+            Improving Image Quality" page online for more info.
+
+            This is where cropping, scaling, binarization, and inversion
+            are applied.  Also does some default Gaussian blur.
         """
         p1, p2 = self.region
-        img = img[p1.y: p2.y, p1.x: p2.x]  # NOTE: np.array is col,row
+        img = img[p1.y: p2.y, p1.x: p2.x]
         img = cv.resize(img, (0, 0), fx=self.scale, fy=self.scale)
         img = _binarize(img, threshold=self.threshold)
         if self.invert:
             img = cv.bitwise_not(img)
         img = cv.GaussianBlur(img, (5, 5), cv.BORDER_DEFAULT)
-        # maybe crop to bounding box around text?
-        # and expand borders?
         return img
 
     def _tesseract_transform(self, x1, y1, w, h):
-        """
-            transform a tesseract position result from tesseract space
-            (bot left) to screen space (top left origin)
-        """
+        """ Transform a tesseract position result from tesseract space
+            (bot left) to screen space (top left origin).
 
+            Parameters
+            ----------
+            x1, y1: int
+                the top left corner of the region we want to rotate
+            w, h: int
+                the width and height of the region
+
+            Returns
+            -------
+            region : (Point, Point)
+                the newly transformed region
+        """
         # rotate so origin is top left
         x2 = x1 + w
         y2 = y1 + h
@@ -190,9 +217,16 @@ class TextPattern(Pattern):
         return (p1, p2)
 
     def _tesseract_parse_output(self, data):
-        """ parse output from pytesseract """
-        logger.debug("parsing tesseract output")
-        # keys = data.keys()  # key to index mapping
+        """ Handle raw output from tesseract.
+
+            Basically just transforms points and outputs
+            them plus text and confidence.
+
+            Parameters
+            ----------
+            data : Dict
+                the raw output from pytesseract.data_to_data (?)
+        """
         ki_map = {k: i for i, k in enumerate(data.keys())}  # key -> index map
 
         out = []
@@ -209,6 +243,19 @@ class TextPattern(Pattern):
         return out
 
     def locate_names(self, img=None):
+        """ Special function that locates names and confidence in addition
+            to the usual region.
+
+            Parameters
+            ----------
+            img : np.ndarray
+                optional image to use for locating
+
+            Returns
+            -------
+            matches : [((Point, Point), text, confidence)]
+                successful match results!
+        """
         if img is None:
             img = capture()
         whole_img = img
@@ -233,7 +280,18 @@ class TextPattern(Pattern):
         return matches
 
     def locate(self, img=None):
-        """ return just regions """
+        """ Wrapper for locate_names, returns only the region.
+
+            Parameters
+            ----------
+            img : np.ndarray
+                optional image to use for locating
+
+            Returns
+            -------
+            matches : [(Point, Point)]
+                regions of successful matches!
+        """
         return [i[0] for i in self.locate_names(img=img)]
 
 

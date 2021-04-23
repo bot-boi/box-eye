@@ -296,12 +296,16 @@ class TextPattern(Pattern):
 
 
 class NumberReader(TextPattern):
-    """ reads numbers from an area """
+    """ Exactly the same as TextPattern but only reads numbers.
+        This is due to the tesseract *config* property.
+    """
     def __init__(self, target, config="--oem 0 --psm 8 -c "
                  "tessedit_char_whitelist=,.0123456789KM", **kwargs):
         super().__init__(target, config=config, **kwargs)
 
     def get(self, img=None):
+        """ Locate and convert found text to numbers.
+        """
         raw = self.locate(img=img)
         if len(raw) <= 0:
             return None
@@ -309,36 +313,36 @@ class NumberReader(TextPattern):
         text = raw_strings[0]  # TODO: pick match with highest confidence?
         if self.debug:
             breakpoint()
-        if "K" in text:
+        if "K" in text:  # 100K
             text = text.replace("K", "")
             return float(text) * 1000.0
         elif "M" in text:
-            text = text.replace("M", "")
+            text = text.replace("M", "")  # 1M
             return float(text) * 1000000.0
         else:
             return float(text)
 
 
 class ImagePattern(Pattern):
-    """ImagePattern."""
-
+    """ Search for an image. """
     def __init__(self, target, grayscale=False,
                  mode="RGB", **kwargs):
-        """__init__.
+        """ Initialize a new ImagePattern
 
-        :param target:  the image to find
-        :type target: np.ndarray | str
-        :param grayscale: apply grayscaling (faster)
-        :type grayscale: bool
-        :param mode: PIL Image mode (auto convert)
-        :type mode: str
-        :param kwargs: See Pattern for more args...
-
+            Parameters
+            ----------
+            target : str | np.ndarray
+                the target image or image path (aka needle)
+            grayscale : bool
+                locate using grayscale
+            mode : str
+                image mode, unused (always RGB)
         """
         self.path = None
         if isinstance(target, str):
             self.path = target
             target = cv.imread(target, cv.IMREAD_COLOR)
+            # REVIEW
             # it probably isnt necessary to convert to RGB
             # the output of *capture* will need to be BGR
             # target = cv.cvtColor(target, cv.COLOR_BGR2RGB)
@@ -356,6 +360,18 @@ class ImagePattern(Pattern):
         return "IPat::{}".format(self.fname)
 
     def locate(self, img=None):
+        """ Find the image pattern.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in (aka haystack), otherwise capture is used
+
+            Returns
+            -------
+            matches : [(Point, Point)]
+                list of regions where matches occur
+        """
         whole_img = img
         if whole_img is None:
             whole_img = capture()
@@ -399,7 +415,18 @@ class ImagePattern(Pattern):
 
 
 class PatternList(Pattern):
+    """ Operations for collections of Patterns
+    """
     def __init__(self, data=[], match_all=False, **kwargs):
+        """ Initialize a PatternList.
+
+            Parameters
+            ----------
+            data : [Pattern1, ...]
+                the patterns to include in this pattern list
+            match_all : bool
+                when to return True on isvisible  REVIEW
+        """
         self.data = data
         self.match_all = match_all
         super().__init__(**kwargs)
@@ -408,9 +435,23 @@ class PatternList(Pattern):
         return "PList-{}".format(self.name)
 
     def append(self, p: Pattern):
+        """ Add a Pattern to the PatternList.
+        """
         self.data.append(p)
 
     def locate_names(self, img=None):
+        """ Locate all Patterns in the PatternList.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in, otherwise capture is used
+
+            Returns
+            -------
+            matches : ([str], [(Point, Point)])
+                result of all matching patterns in *names, regions* format
+        """
         if img is None:
             img = capture()
 
@@ -425,9 +466,34 @@ class PatternList(Pattern):
         return (names, loc)
 
     def locate(self, img=None):
+        """ Same as locate_names minus the names.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in, otherwise capture is used
+
+
+            Returns
+            -------
+            matches : [(Point, Point)]
+                regions of all matched patterns
+        """
         return self.locate_names(img=img)[1]
 
     def isvisible(self, img=None):
+        """ Check if all or any Patterns in the PatternList
+            are visible.  Behaviour defined by match_all property.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in, otherwise capture is used
+
+            Returns
+            -------
+            visible : bool
+                whether the pattern is visible or not
         bools = [p.isvisible(img=img) for p in self.data]
         if self.match_all:
             return False not in bools

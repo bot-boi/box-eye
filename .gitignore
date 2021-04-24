@@ -1,4 +1,6 @@
 __pycache__
+_static
+_templates
 .pytest_cache
 *.egg
 *.pyc
@@ -6,5 +8,6 @@ __pycache__
 boxeye.egg-info
 build
 dist
+docs
 env
 tags

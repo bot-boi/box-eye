@@ -78,7 +78,7 @@ def _binarize(img, threshold=150):
         img is split into 0,1 along this value (0-255)
 
     Returns
-    ______
+    -------
         img : np.ndarray
             the binarized image
     """
@@ -494,6 +494,7 @@ class PatternList(Pattern):
             -------
             visible : bool
                 whether the pattern is visible or not
+        """
         bools = [p.isvisible(img=img) for p in self.data]
         if self.match_all:
             return False not in bools
@@ -502,13 +503,22 @@ class PatternList(Pattern):
 
 
 class ColorPattern(Pattern):
+    """ Pattern for finding a cluster of colored points.
+    """
     def __init__(self, cts, cluster=5, min_thresh=50, max_thresh=5000,
                  **kwargs):
-        """
+        """ Initialize a ColorPattern.
+
+            Parameters
+            ----------
             cts : CTS
-                - the *color tolerance speed (aka method)*
+                the *color tolerance speed (aka method)*
             cluster : int = 5 (pixels)
-                - the radius to use when clustering
+                the radius to use when clustering
+            min_thresh : int
+                the minimum points for a cluster to be valid
+            max_thresh : int
+                the maximum points for a cluster to be valid
         """
         self.cluster = cluster
         self.cts = cts
@@ -520,6 +530,16 @@ class ColorPattern(Pattern):
         """ Find all points in an image that match a cts.
             Then group them with radius, apply thresholds
             and maybe some other stuff.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in, otherwise capture is used
+
+            Returns
+            -------
+            points : [[Point, ...]]
+                the found points clustered into a 2d array
         """
         (h, w, _) = img.shape  # REVIEW ?
         if self.region is None:
@@ -565,6 +585,18 @@ class ColorPattern(Pattern):
         return filtered_points
 
     def locate(self, img=None):
+        """ Same as locate_points except returns regions instead.
+
+            Parameters
+            ----------
+            img : np.ndarray | None
+                optional image to find in, otherwise capture is used
+
+            Returns
+            -------
+            regions : [(Point, Point), ...]
+                regions of all clusters found by locate_points
+        """
         points = self.locate_points(img=img)
         # REVIEW: does this work ?  points sorted or no ?
         regions = [(Point(cl[0][0], cl[0][1]),

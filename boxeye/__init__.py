@@ -306,7 +306,7 @@ class NumberReader(TextPattern):
     def get(self, img=None):
         """ Locate and convert found text to numbers.
         """
-        raw = self.locate(img=img)
+        raw = self.locate_names(img=img)  # [((p1, p2), text)]
         if len(raw) <= 0:
             return None
         raw_strings = [i[1] for i in raw]
@@ -410,7 +410,8 @@ class ImagePattern(Pattern):
             cv.waitKey(6000)
             breakpoint()
 
-        logger.debug("located {} at {}".format(self.name, matched))
+        if len(matched) > 0:
+            logger.debug("located {} at {}".format(self.name, matched))
         return matched
 
 

@@ -266,8 +266,14 @@ class TextPattern(Pattern):
         raw = self._tesseract_parse_output(data)
         # raw format is ((p1, p2), text, confidence)
         # parse_output could return just the matches
-        matches = [i for i in raw if re.search(self.target, i[1])
-                   and i[2] >= self.confidence]
+        matches = []
+        for i in raw:
+            if re.search(self.target, i[1]):
+                if i[2] >= self.confidence:
+                    matches.append(i)
+                else:
+                    logger.debug("failed to match {}, {.3f} < {}"
+                                 .format(self.name, i[2], self.confidence))
 
         if self.debug or MAXDEBUG:
             cv.namedWindow("debug", flags=cv.WINDOW_GUI_NORMAL)
@@ -277,7 +283,8 @@ class TextPattern(Pattern):
             cv.imshow("debug", img)
             cv.waitKey(6000)
             breakpoint()
-        logger.debug("got {} matches for {}".format(len(matches), self.name))
+
+        # logger.debug("got {} matches for {}".format(len(matches), self.name))
         return matches
 
     def locate(self, img=None):
@@ -399,6 +406,9 @@ class ImagePattern(Pattern):
         if max_val >= self.confidence:
             matched.append((Point(mloc[0], mloc[1]),
                             Point(mloc[0] + w, mloc[1] + h)))
+        else:
+            logger.debug("failed to match {}, {:.2f} < {}"
+                         .format(self.name, max_val, self.confidence))
 
         if self.debug or MAXDEBUG:
             drawn_img = whole_img

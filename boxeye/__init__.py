@@ -321,10 +321,10 @@ class NumberReader(TextPattern):
         text = raw_strings[0]  # TODO: pick match with highest confidence?
         if self.debug:
             breakpoint()
-        if "K" in text:  # 100K
+        if text.find("K") >= 0:  # 100K
             text = text.replace("K", "")
             return float(text) * 1000.0
-        elif "M" in text:
+        elif text.find("M") >= 0:
             text = text.replace("M", "")  # 1M
             return float(text) * 1000000.0
         else:

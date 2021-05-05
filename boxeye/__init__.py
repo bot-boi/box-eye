@@ -272,7 +272,7 @@ class TextPattern(Pattern):
                 if i[2] >= self.confidence:
                     matches.append(i)
                 else:
-                    logger.debug("failed to match {}, {.3f} < {}"
+                    logger.debug("failed to match {}, {} < {}"
                                  .format(self.name, i[2], self.confidence))
 
         if self.debug or MAXDEBUG:

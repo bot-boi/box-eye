@@ -271,9 +271,6 @@ class TextPattern(Pattern):
             if re.search(self.target, i[1]):
                 if i[2] >= self.confidence:
                     matches.append(i)
-                else:
-                    logger.debug("failed to match {}, {} < {}"
-                                 .format(self.name, i[2], self.confidence))
 
         if self.debug or MAXDEBUG:
             cv.namedWindow("debug", flags=cv.WINDOW_GUI_NORMAL)
@@ -319,6 +316,8 @@ class NumberReader(TextPattern):
             return None
         raw_strings = [i[1] for i in raw]
         text = raw_strings[0]  # TODO: pick match with highest confidence?
+        # cleanup
+        text = text.strip()
         if self.debug:
             breakpoint()
         if text.find("K") >= 0:  # 100K

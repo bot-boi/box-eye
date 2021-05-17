@@ -2,7 +2,6 @@ alabaster==0.7.12
 atomicwrites==1.4.0
 attrs==20.3.0
 Babel==2.9.0
-boxeye==0.1
 certifi==2020.12.5
 chardet==4.0.0
 colorama==0.4.4

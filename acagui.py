@@ -12,7 +12,7 @@ import PySimpleGUI as sg
 
 from boxeye import capture, ColorPattern, ImagePattern, Point, TextPattern
 from boxeye.botutils.extra import get_app_path
-from boxeye.botutils import debug_mode
+# from boxeye.botutils import debug_mode
 from boxeye.cts import CTS2
 
 
@@ -413,7 +413,10 @@ class AutoColorAid:
             'imgview': self._event_click_graph,
             'mode': self._event_mode_change,
         }
-        event_handlers[event](values)
+        try:
+            event_handlers[event](values)
+        except Exception as err:
+            logging.info(err)
 
     def run(self):
         """ ACA event loop """
@@ -430,5 +433,6 @@ class AutoColorAid:
 
 
 if __name__ == "__main__":
-    aca = AutoColorAid(default_img_path='/home/noone/Develop/huuuge/screencaps/ad1.png')
+    # TODO: include a default image
+    aca = AutoColorAid(default_img_path='./OSRS-Banner.jpg')
     aca.run()

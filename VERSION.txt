@@ -1,0 +1,7 @@
+0.0.1
+
+
+TODO: changelog!!
+major : rewrite/backwards compatiblity break
+minor : new feature
+patch : bugs/fixes

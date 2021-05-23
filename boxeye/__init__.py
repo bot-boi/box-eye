@@ -126,6 +126,7 @@ class Pattern():
         self.confidence = confidence
         self.region = region
         self.debug = debug
+        self.pause_on_debug = pause_on_debug
 
     def isvisible(self, img=None):
         """ check if pattern is visible """
@@ -266,6 +267,8 @@ class TextPattern(Pattern):
         data = pytesseract.image_to_data(img, lang='eng', config=self.config,
                                          output_type=Output.DICT)
         raw = self._tesseract_parse_output(data)
+        logger.debug('search for {} at {} got the following:\n'
+                     '{}'.format(self.name, self.region, raw))
         # raw format is ((p1, p2), text, confidence)
         # parse_output could return just the matches
         matches = []
@@ -311,6 +314,7 @@ class NumberReader(TextPattern):
                  "tessedit_char_whitelist=,.0123456789KM", **kwargs):
         super().__init__(target, config=config, **kwargs)
 
+    # REVIEW: this should probably be called "locate"
     def get(self, img=None):
         """ Locate and convert found text to numbers.
         """
@@ -336,7 +340,7 @@ class NumberReader(TextPattern):
 class ImagePattern(Pattern):
     """ Search for an image. """
     def __init__(self, target, grayscale=False, mask=None, multi=False,
-                 **kwargs):
+                 method=cv.TM_CCORR_NORMED, **kwargs):
         """ Initialize a new ImagePattern.
 
             Parameters
@@ -355,6 +359,11 @@ class ImagePattern(Pattern):
             multi : bool
                 if true, locate will return all matches instead of just the
                 best one
+            method : int
+                one of the cv2.TM_* constants, see cv2.matchTemplate doc for
+                info.  you will generally want the normalized methods
+                NOTE: TM_CCOEFF_NORMED is *stricter* than the default
+                TODO: support TM_SQDIFF*
         """
         # handle target/grayscale/mode args
         self.grayscale = grayscale
@@ -369,6 +378,7 @@ class ImagePattern(Pattern):
 
         self.mask = mask
         self.multi = multi
+        self.method = method
         super().__init__(**kwargs)
 
     def __str__(self):
@@ -385,10 +395,10 @@ class ImagePattern(Pattern):
         img = img[p1.y: p2.y, p1.x: p2.x]  # crop to this patterns region
 
         def match_nomask():
-            return cv.matchTemplate(img, self.target, cv.TM_CCORR_NORMED)
+            return cv.matchTemplate(img, self.target, self.method)
 
         def match_mask():
-            return cv.matchTemplate(img, self.target, cv.TM_CCORR_NORMED,
+            return cv.matchTemplate(img, self.target, self.method,
                                     self.mask)
         if self.mask:
             return match_mask
@@ -413,9 +423,14 @@ class ImagePattern(Pattern):
         if img is None:
             img = capture()
         res = self._get_match_template_func(img)()
+        breakpoint()
+        printable = res[::np.sum(res.shape)]
+        logger.debug('search for {} at {} got the following:\n'
+                     '{}'.format(self.name, self.region, printable))
 
         # match multi or single (default)
         p1, _ = self.region
+        matched = []
         if self.multi:
             loc = np.where(res >= self.confidence)
             # convert raw to point and reapply offset (p1)
@@ -423,19 +438,20 @@ class ImagePattern(Pattern):
             matched = [(pt, pt + Point(pt.x + w, pt.y + h)) for pt in points]
         else:
             _, max_val, _, mloc = cv.minMaxLoc(res)
+            # TODO: what if matchTemplate method is TM_SQ*
             mloc += p1  # reapply offset cus we cropped earlier
-            matched = []
             if max_val >= self.confidence:
                 matched.append((Point(mloc[0], mloc[1]),
                                 Point(mloc[0] + w, mloc[1] + h)))
-                logger.debug("found pattern {}, {:.2f} < {}"
-                             .format(self.name, max_val, self.confidence))
+        if len(matched) > 0:
+            logger.debug("found pattern {}, {:.2f} < {}"
+                         .format(self.name, matched, self.confidence))
 
         if self.debug or MAXDEBUG:
             drawn_img = img
             for p1, p2 in matched:
                 drawn_img = cv.rectangle(img, tuple(p1), tuple(p2),
-                                         (255, 0, 0), 2)
+                                         (255, 0, 0), 2)  # red
             cv.namedWindow("debug", flags=cv.WINDOW_GUI_NORMAL)
             cv.moveWindow("debug", 0, 0)
             cv.imshow("debug", drawn_img)

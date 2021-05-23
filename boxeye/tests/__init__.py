@@ -1,4 +1,5 @@
 import os
+import cv2 as cv
 
 from .. import ImagePattern as IPat
 from .. import Point as P
@@ -19,7 +20,7 @@ def test_txt_pattern():
 
 def test_img_pattern():
     p = IPat(path + "chat.png", region=(P(0, 438), P(95, 539)),
-             name="CHAT", confidence=0.7)
+             name="CHAT", confidence=0.4)
     check_vision(p, "isvisible", "bet-350k", "game-idle")
     # check_vision(p, "isvisible", "connection-error", expected=False)  # <- failing
 

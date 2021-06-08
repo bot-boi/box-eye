@@ -1,7 +1,12 @@
-0.0.1
+0.0.2
 
 
 TODO: changelog!!
 major : rewrite/backwards compatiblity break
 minor : new feature
 patch : bugs/fixes
+
+
+
+0.0.2:
+	* fix NumberReader not respecting pause_on_debug option

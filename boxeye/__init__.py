@@ -326,7 +326,8 @@ class NumberReader(TextPattern):
         # cleanup
         text = text.strip()
         if self.debug:
-            breakpoint()
+            if self.pause_on_debug:
+                breakpoint()
         if text.find("K") >= 0:  # 100K
             text = text.replace("K", "")
             return float(text) * 1000.0
@@ -423,7 +424,6 @@ class ImagePattern(Pattern):
         if img is None:
             img = capture()
         res = self._get_match_template_func(img)()
-        breakpoint()
         printable = res[::np.sum(res.shape)]
         logger.debug('search for {} at {} got the following:\n'
                      '{}'.format(self.name, self.region, printable))
@@ -444,7 +444,7 @@ class ImagePattern(Pattern):
                 matched.append((Point(mloc[0], mloc[1]),
                                 Point(mloc[0] + w, mloc[1] + h)))
         if len(matched) > 0:
-            logger.debug("found pattern {}, {:.2f} < {}"
+            logger.debug("found pattern {} at {}, > {}"
                          .format(self.name, matched, self.confidence))
 
         if self.debug or MAXDEBUG:

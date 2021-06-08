@@ -424,7 +424,6 @@ class ImagePattern(Pattern):
         if img is None:
             img = capture()
         res = self._get_match_template_func(img)()
-        breakpoint()
         printable = res[::np.sum(res.shape)]
         logger.debug('search for {} at {} got the following:\n'
                      '{}'.format(self.name, self.region, printable))

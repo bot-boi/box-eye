@@ -326,7 +326,8 @@ class NumberReader(TextPattern):
         # cleanup
         text = text.strip()
         if self.debug:
-            breakpoint()
+            if self.pause_on_debug:
+                breakpoint()
         if text.find("K") >= 0:  # 100K
             text = text.replace("K", "")
             return float(text) * 1000.0

@@ -108,6 +108,8 @@ class AutoColorAid:
             [sg.In(tooltip="region", default_text="0 0, -1 -1",
                    key="region")],
             [sg.In(default_text="NEW-ACA-PATTERN", key="pattern-name")],
+            [sg.Check('debug', key='pattern-debug')],
+            [sg.Check('pause on debug', key='pattern-pause-on-debug')],
         ]
         primary_menu = sg.Frame("primary menu", actions_menu + pattern_menu)
         colpat_menu = \
@@ -146,7 +148,7 @@ class AutoColorAid:
                                tooltip="threshold to binarize by")],
                         [sg.Check("invert", key="txtpat-invert",
                                   tooltip="invert the binary image")],
-                        [sg.In(default_text="--psm 8", key="txtpat-config",
+                        [sg.In(default_text="", key="txtpat-config",
                                tooltip="args for tesseract ocr")]
                     ], key=MODE_TEXTPATTERN, visible=False))
 
@@ -219,21 +221,22 @@ class AutoColorAid:
             this is where all the finding/generating happens
         """
         # TODO: display CTS color range in preview
-        conf = float(self.window['confidence'].get())
-        region_str = self._stringify_region(self.region)
         cluster = int(self.window['colpat-cluster-radius'].get())
         mf = int(self.window['colpat-min-thresh'].get())
         Mf = int(self.window['colpat-max-thresh'].get())
-        name = self.window['pattern-name'].get()
         cts = CTS2.from_colors(self.colors)
-        pattern = ColorPattern(cts, confidence=conf, cluster=cluster,
+        pattern = ColorPattern(cts, cluster=cluster,
                                min_thresh=mf, max_thresh=Mf,
-                               name=name)
+                               **self.get_pattern_menu_stuff())
+        conf = self.get_pattern_menu_stuff()['confidence']
+        name = self.get_pattern_menu_stuff()['name']
         pattern_str = "CPat({}, confidence={},\n" \
                       "     region={}, cluster={},\n" \
                       "     min_thresh={}, max_thresh={},\n" \
                       "     name='{}')\n" \
-                      .format(cts, conf, region_str, cluster, mf, Mf, name)
+                      .format(cts, conf,
+                              self._stringify_region(self.region),
+                              cluster, mf, Mf, name)
         self.window["pattern-out"].update(pattern_str)
         result = pattern.locate(img=self.current_img)
         self._draw_regions(result)
@@ -243,22 +246,30 @@ class AutoColorAid:
             this is where all the finding/generating happens
         """
         # TODO: file save dialog for needle
-        region_str = self._stringify_region(self.region)
-        conf = float(self.window['confidence'].get())
         grayscale = bool(self.window['imgpat-grayscale'].get())
-        name = self.window['pattern-name'].get()
-        pattern = ImagePattern(self.needle_path, region=self.region,
-                               confidence=conf, grayscale=grayscale,
-                               name=name)
+        pattern = ImagePattern(self.needle_path, grayscale=grayscale,
+                               **self.get_pattern_menu_stuff())
+
+        conf = self.get_pattern_menu_stuff()['confidence']
+        name = self.get_pattern_menu_stuff()['name']
         pattern_str = "IPat({}, region={},\n" \
                       "     confidence={}, grayscale={},\n" \
                       "     name='{}')\n" \
                       .format(self.needle_path,
-                              region_str,
+                              self._stringify_region(self.region),
                               conf, grayscale, name)
         self.window["pattern-out"].update(pattern_str)
         result = pattern.locate(img=self.current_img)
         self._draw_regions(result)
+
+    def get_pattern_menu_stuff(self):
+        return {
+            'region': self.region,
+            'confidence': float(self.window['confidence'].get()),
+            'debug': self.window['pattern-debug'].get(),
+            'pause_on_debug': self.window['pattern-pause-on-debug'].get(),
+            'name': self.window['pattern-name'].get(),
+        }
 
     def _event_draw_txtpat(self, values):
         """ MODE_TEXTPATTERN draw event
@@ -266,22 +277,22 @@ class AutoColorAid:
         """
         # TODO: preview graph, show img post processing
         pattern_text = self.window['txtpat-pattern-text'].get()
-        region_str = self._stringify_region(self.region)
-        conf = float(self.window['confidence'].get())
         scale = int(self.window['txtpat-scale'].get())
         invert = bool(self.window['txtpat-invert'].get())
         thresh = int(self.window['txtpat-binary-threshold'].get())
         config = self.window['txtpat-config'].get()
-        name = self.window['pattern-name'].get()
-        pattern = TextPattern(pattern_text, region=self.region,
-                              confidence=conf, scale=scale, invert=invert,
-                              threshold=thresh, config=config, name=name)
+        pattern = TextPattern(pattern_text, scale=scale, invert=invert,
+                              threshold=thresh, config=config,
+                              **self.get_pattern_menu_stuff())
+
+        conf = self.get_pattern_menu_stuff()['confidence']
+        name = self.get_pattern_menu_stuff()['name']
         pattern_str = "TPat('{}', region={},\n" \
                       "     confidence={}, invert={},\n" \
                       "     scale={}, threshold={},\n" \
                       "     config={}, name='{}')\n" \
-                      .format(pattern_text, region_str, conf,
-                              invert, scale, thresh, config, name)
+                      .format(pattern_text, self._stringify_region(self.region),
+                              conf, invert, scale, thresh, config, name)
         self.window["pattern-out"].update(pattern_str)
         result = pattern.locate(img=self.current_img)
         logging.debug(result)
@@ -421,7 +432,8 @@ class AutoColorAid:
         try:
             event_handlers[event](values)
         except Exception as err:
-            logging.debug(err)
+            raise err
+            # logging.debug(err)
 
     def run(self):
         """ ACA event loop """

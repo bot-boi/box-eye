@@ -220,7 +220,7 @@ class AutoColorAid:
         """
         # TODO: display CTS color range in preview
         conf = float(self.window['confidence'].get())
-        region = self.region
+        region_str = self._stringify_region(self.region)
         cluster = int(self.window['colpat-cluster-radius'].get())
         mf = int(self.window['colpat-min-thresh'].get())
         Mf = int(self.window['colpat-max-thresh'].get())
@@ -232,8 +232,8 @@ class AutoColorAid:
         pattern_str = "CPat({}, confidence={},\n" \
                       "     region={}, cluster={},\n" \
                       "     min_thresh={}, max_thresh={},\n" \
-                      "     name={})\n" \
-                      .format(cts, conf, region, cluster, mf, Mf, name)
+                      "     name='{}')\n" \
+                      .format(cts, conf, region_str, cluster, mf, Mf, name)
         self.window["pattern-out"].update(pattern_str)
         result = pattern.locate(img=self.current_img)
         self._draw_regions(result)
@@ -243,6 +243,7 @@ class AutoColorAid:
             this is where all the finding/generating happens
         """
         # TODO: file save dialog for needle
+        region_str = self._stringify_region(self.region)
         conf = float(self.window['confidence'].get())
         grayscale = bool(self.window['imgpat-grayscale'].get())
         name = self.window['pattern-name'].get()
@@ -251,9 +252,9 @@ class AutoColorAid:
                                name=name)
         pattern_str = "IPat({}, region={},\n" \
                       "     confidence={}, grayscale={},\n" \
-                      "     name={})\n" \
+                      "     name='{}')\n" \
                       .format(self.needle_path,
-                              self.needle_region,
+                              region_str,
                               conf, grayscale, name)
         self.window["pattern-out"].update(pattern_str)
         result = pattern.locate(img=self.current_img)
@@ -275,14 +276,15 @@ class AutoColorAid:
         pattern = TextPattern(pattern_text, region=self.region,
                               confidence=conf, scale=scale, invert=invert,
                               threshold=thresh, config=config, name=name)
-        pattern_str = "TPat(\"{}\", region={},\n" \
+        pattern_str = "TPat('{}', region={},\n" \
                       "     confidence={}, invert={},\n" \
                       "     scale={}, threshold={},\n" \
-                      "     config={}, name={})\n" \
+                      "     config={}, name='{}')\n" \
                       .format(pattern_text, region_str, conf,
                               invert, scale, thresh, config, name)
         self.window["pattern-out"].update(pattern_str)
         result = pattern.locate(img=self.current_img)
+        logging.debug(result)
         self._draw_regions(result)
 
     def _event_draw(self, values):
@@ -378,19 +380,22 @@ class AutoColorAid:
         self.window['imgpat-needle-preview'].draw_image(location=(0, 0), data=img_str)
 
     def _parse_region(self, region_str):
-        """ convert user region from 'x1 y1, x2 y2' to (Point, Point) """
+        """ convert user region from '(P(x1, y1), P(x2, y2))' to (Point, Point) """
         region = []
-        for i in region_str.split(","):
-            i = i.strip()
-            pt = i.split(' ')
-            pt = Point(int(pt[0]), int(pt[1]))
-            region.append(pt)
+        last_char = None
+        delete_me = ['(', ')', 'P', ' ']
+        for i in delete_me:
+            region_str = region_str.replace(i, '')
+        rr = region_str.split(',')  # region raw
+        ri = [int(i) for i in rr]  # region integer
+        region = (Point(ri[0], ri[1]), Point(ri[2], ri[3]))
         return region
 
     def _stringify_region(self, region):
-        """ convert region from (Point, Point) to 'x1 y1, x2 y2' """
+        """ Convert region from (Point, Point) to '(P(x1, y1), P(x2, y2))'
+        """
         p1, p2 = region
-        return "{} {}, {} {}".format(p1.x, p1.y, p2.x, p2.y)
+        return "(P({}, {}), P({}, {}))".format(p1.x, p1.y, p2.x, p2.y)
 
     def current_img_clear(self):
         """ clear the image viewer of all marks and redraw """
@@ -416,7 +421,7 @@ class AutoColorAid:
         try:
             event_handlers[event](values)
         except Exception as err:
-            logging.info(err)
+            logging.debug(err)
 
     def run(self):
         """ ACA event loop """

@@ -1,12 +1,16 @@
-0.0.2
+VERSION: 0.0.3
 
 
-TODO: changelog!!
-major : rewrite/backwards compatiblity break
-minor : new feature
-patch : bugs/fixes
+STANDARD OPERATING PROCEDURE:
+	major : rewrite/backwards compatiblity break
+	minor : new feature
+	patch : bugs/fixes
 
 
+!!!CHANGELOG!!!
+
+0.0.3:
+    	* round off numbers returned by NumberReader, handle target=None for IPat
 
 0.0.2:
 	* fix NumberReader not respecting pause_on_debug option

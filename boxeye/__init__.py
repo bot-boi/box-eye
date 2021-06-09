@@ -325,17 +325,19 @@ class NumberReader(TextPattern):
         text = raw_strings[0]  # TODO: pick match with highest confidence?
         # cleanup
         text = text.strip()
+        res = None
         if self.debug:
             if self.pause_on_debug:
                 breakpoint()
         if text.find("K") >= 0:  # 100K
             text = text.replace("K", "")
-            return float(text) * 1000.0
+            res = float(text) * 1000.0
         elif text.find("M") >= 0:
             text = text.replace("M", "")  # 1M
-            return float(text) * 1000000.0
+            res = float(text) * 1000000.0
         else:
-            return float(text)
+            res = float(text)
+        return(round(res))
 
 
 class ImagePattern(Pattern):
@@ -366,6 +368,9 @@ class ImagePattern(Pattern):
                 NOTE: TM_CCOEFF_NORMED is *stricter* than the default
                 TODO: support TM_SQDIFF*
         """
+        super().__init__(**kwargs)
+        if target is None:
+            raise Exception('Got invalid target for {}'.format(self.name))
         # handle target/grayscale/mode args
         self.grayscale = grayscale
         self.path = None
@@ -380,7 +385,6 @@ class ImagePattern(Pattern):
         self.mask = mask
         self.multi = multi
         self.method = method
-        super().__init__(**kwargs)
 
     def __str__(self):
         return "IPat::{}".format(self.fname)

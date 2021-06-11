@@ -2,7 +2,6 @@ import inspect
 import os
 import sys
 
-from retry.api import retry_call
 from vectormath import Vector2 as P  # Point
 
 
@@ -42,17 +41,6 @@ def periodic(scheduler, interval, priority, action, actionargs=[],
     if do_now:
         action(*actionargs)
     return event
-
-
-# conditional retry decorator, lets me add stuff like "FAILSAFE-MODE"
-def retry_if(_condition, *args, **kwargs):
-    @decorator
-    def mydecorator(func, *dargs, **dwargs):  # decorator args
-        if not _condition:
-            return func
-        return retry_call(func, fargs=dargs, fkwargs=dwargs,
-                          *args, **kwargs)
-    return mydecorator
 
 
 # flattens a 2d array

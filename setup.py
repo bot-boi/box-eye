@@ -15,6 +15,7 @@ setuptools.setup(
         'opencv-python',
         'Pillow',
         'pure-python-adb',
+	'pytesseract',
         'vectormath',
     ],
 )

@@ -73,6 +73,8 @@ def keypress(keycode):
 
 def set_device(client, device):
     """ set device (assign emulator) """
+    if client is None:
+        client = Client()
     if "emulator" not in device:
         ip, port = device.split(":")
         client.remote_connect(ip, int(port))

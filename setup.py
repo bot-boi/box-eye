@@ -3,7 +3,7 @@ import setuptools
 
 setuptools.setup(
 	name='boxeye',
-	version='0.0.4',
+	version='0.0.5',
 	url="https://github.com/bot-boi/box-eye",
 	packages=['boxeye', 'boxeye/botutils'],
 	classifiers=[

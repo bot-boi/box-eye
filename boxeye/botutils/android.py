@@ -2,7 +2,6 @@ import logging
 
 import cv2 as cv
 import numpy as np
-import pyautogui as pyag
 
 from ppadb.client import Client  # adb client
 from vectormath import Vector2 as Point
@@ -15,12 +14,7 @@ def _inputarg_handler(point) -> (int, int):
     x = None
     y = None
 
-    # case: Box(l, t, w, h) -- pyautogui
-    if isinstance(point, pyag.pyscreeze.Box):
-        x1, y1, w, h = point
-        x = x1 + (w // 2)
-        y = y1 + (h // 2)
-    elif isinstance(point, tuple) and isinstance(list(point)[0], Point):
+    if isinstance(point, tuple) and isinstance(list(point)[0], Point):
         p1, p2 = point  # case: (Point, Point) aka region
         dist = p2 - p1
         idk = p1 + (dist // 2)
@@ -78,6 +72,7 @@ def keypress(keycode):
 
 
 def set_device(client, device):
+<<<<<<< HEAD
     """ set device (assign emulator)
         pass none for default client
     """

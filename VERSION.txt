@@ -1,4 +1,4 @@
-VERSION: 0.0.3
+VERSION: 0.0.5
 
 
 STANDARD OPERATING PROCEDURE:
@@ -8,6 +8,12 @@ STANDARD OPERATING PROCEDURE:
 
 
 !!!CHANGELOG!!!
+
+0.0.5:
+	* `set_device` now uses default ADB client if `None` is provided.
+
+0.0.4:
+	* `pyautogui` dependency removed (unused).
 
 0.0.3:
     	* round off numbers returned by NumberReader, handle target=None for IPat

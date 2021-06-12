@@ -9,8 +9,10 @@ import vectormath
 
 from pytesseract import Output
 
+# TODO: decouple boxeye and botutils
 from .botutils import android
 from .cts import CTS2
+from .point import Point
 
 
 try:
@@ -20,9 +22,9 @@ except KeyError:
     MAXDEBUG = False
 
 
-logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("boxeye")
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 class NoDepsException(Exception):
@@ -87,11 +89,6 @@ def _binarize(img, threshold=150):
     # what is the first value returned here for? \/
     _, img = cv.threshold(img, threshold, 255, cv.THRESH_BINARY)
     return img
-
-
-def Point(x, y):
-    """ Wrapper for vectormath.Vector2 that forces int """
-    return vectormath.Vector2(x, y).astype(int)
 
 
 class Pattern():
@@ -267,8 +264,6 @@ class TextPattern(Pattern):
         data = pytesseract.image_to_data(img, lang='eng', config=self.config,
                                          output_type=Output.DICT)
         raw = self._tesseract_parse_output(data)
-        logger.debug('search for {} at {} got the following:\n'
-                     '{}'.format(self.name, self.region, raw))
         # raw format is ((p1, p2), text, confidence)
         # parse_output could return just the matches
         matches = []
@@ -277,6 +272,8 @@ class TextPattern(Pattern):
                 if i[2] >= self.confidence:
                     matches.append(i)
 
+        logger.debug('search for {} at {} got the following:\n'
+                     '{}'.format(self.name, self.region, matches))
         if self.debug or MAXDEBUG:
             cv.namedWindow("debug", flags=cv.WINDOW_GUI_NORMAL)
             cv.moveWindow("debug", 0, 0)
@@ -287,7 +284,6 @@ class TextPattern(Pattern):
             if self.pause_on_debug:
                 breakpoint()
 
-        # logger.debug("got {} matches for {}".format(len(matches), self.name))
         return matches
 
     def locate(self, img=None):
@@ -303,7 +299,11 @@ class TextPattern(Pattern):
             matches : [(Point, Point)]
                 regions of successful matches!
         """
-        return [i[0] for i in self.locate_names(img=img)]
+        matches = [i[0] for i in self.locate_names(img=img)]
+        if len(matches) > 0:
+            logger.info('Got {} matches for {}.'
+                        .format(len(matches), self.name))
+        return matches
 
 
 class NumberReader(TextPattern):
@@ -386,9 +386,6 @@ class ImagePattern(Pattern):
         self.multi = multi
         self.method = method
 
-    def __str__(self):
-        return "IPat::{}".format(self.fname)
-
     def _get_match_template_func(self, img):
         """ Returns a function that runs cv2.matchTemplate and
             applies self.mask if it exists, ignores it if not.
@@ -464,7 +461,8 @@ class ImagePattern(Pattern):
                 breakpoint()
 
         if len(matched) > 0:
-            logger.debug("located {} at {}".format(self.name, matched))
+            logger.info('Got {} matches for {}.'
+                        .format(len(matched), self.name))
         return matched
 
 
@@ -484,9 +482,6 @@ class PatternList(Pattern):
         self.data = data
         self.match_all = match_all
         super().__init__(**kwargs)
-
-    def __str__(self):
-        return "PList-{}".format(self.name)
 
     def append(self, p: Pattern):
         """ Add a Pattern to the PatternList.
@@ -533,7 +528,11 @@ class PatternList(Pattern):
             matches : [(Point, Point)]
                 regions of all matched patterns
         """
-        return self.locate_names(img=img)[1]
+        matches = self.locate_names(img=img)[1]
+        if len(matches) > 0:
+            logger.info('Got {} matches for {}.'
+                        .format(len(matches), self.name))
+        return matches
 
     def isvisible(self, img=None):
         """ Check if all or any Patterns in the PatternList
@@ -609,7 +608,7 @@ class ColorPattern(Pattern):
                                        np.all(img >= self.cts.min, 2)))
         points = np.column_stack((x, y))  # x,y order for PointArrays
         if len(points) <= 0:
-            logging.debug("failed to find {}".format(self.name))
+            logger.debug("failed to find {}".format(self.name))
             return
 
         # clustering
@@ -658,5 +657,7 @@ class ColorPattern(Pattern):
         regions = [(Point(cl[0][0], cl[0][1]),
                     Point(cl[-1][0], cl[-1][1]))
                    for cl in points]
-        logging.debug("found @ {}".format(regions))
+        if len(regions) > 0:
+            logger.info('Got {} matches for {}.'
+                        .format(len(regions), self.name))
         return regions

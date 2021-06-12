@@ -72,7 +72,6 @@ def keypress(keycode):
 
 
 def set_device(client, device):
-<<<<<<< HEAD
     """ set device (assign emulator)
         pass none for default client
     """

@@ -3,6 +3,8 @@ import logging
 import cv2 as cv
 import numpy as np
 import pyautogui as pyag
+
+from ppadb.client import Client  # adb client
 from vectormath import Vector2 as Point
 
 logger = logging.getLogger("boxeye")
@@ -76,7 +78,11 @@ def keypress(keycode):
 
 
 def set_device(client, device):
-    """ set device (assign emulator) """
+    """ set device (assign emulator)
+        pass none for default client
+    """
+    if client is None:
+        client = Client()
     if "emulator" not in device:
         ip, port = device.split(":")
         client.remote_connect(ip, int(port))

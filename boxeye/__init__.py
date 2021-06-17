@@ -325,6 +325,7 @@ class NumberReader(TextPattern):
         text = raw_strings[0]  # TODO: pick match with highest confidence?
         # cleanup
         text = text.strip()
+        text = text.replace(',', '')
         res = None
         if self.debug:
             if self.pause_on_debug:

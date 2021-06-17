@@ -1,4 +1,4 @@
-VERSION: 0.0.5
+VERSION: 0.0.6
 
 
 STANDARD OPERATING PROCEDURE:
@@ -8,6 +8,10 @@ STANDARD OPERATING PROCEDURE:
 
 
 !!!CHANGELOG!!!
+
+
+0.0.6:
+	* Moved `make_check_vision` to botutils.extra.
 
 0.0.5:
 	* `set_device` now uses default ADB client if `None` is provided.

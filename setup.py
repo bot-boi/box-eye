@@ -3,7 +3,7 @@ import setuptools
 
 setuptools.setup(
 	name='boxeye',
-	version='0.0.5',
+	version='0.0.6',
 	url="https://github.com/bot-boi/box-eye",
 	packages=['boxeye', 'boxeye/botutils'],
 	classifiers=[
@@ -15,7 +15,7 @@ setuptools.setup(
         'opencv-python',
         'Pillow',
         'pure-python-adb',
-	    'pytesseract',
+        'pytesseract',
         'pytest',
         'vectormath',
     ],

@@ -16,6 +16,10 @@ from boxeye.botutils.extra import get_app_path
 from boxeye.cts import CTS2
 
 
+logging.root.setLevel(logging.DEBUG)
+logging.getLogger('boxeye').setLevel(logging.DEBUG)
+
+
 MODE_COLORPATTERN = "colpat"
 MODE_COLORPATTERN_EVENT = "ColorPattern::{}".format(MODE_COLORPATTERN)
 MODE_TEXTPATTERN = "txtpat"

@@ -378,7 +378,6 @@ class ImagePattern(Pattern):
         if isinstance(target, str):
             self.path = target
             target = cv.imread(target, cv.IMREAD_COLOR)
-        target = cv.cvtColor(target, cv.COLOR_BGR2RGB)  # enforce RGB
         if grayscale:
             target = _grayscale(target)
         self.target = target

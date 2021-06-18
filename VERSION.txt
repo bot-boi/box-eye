@@ -1,4 +1,4 @@
-VERSION: 0.0.6
+VERSION: 0.0.7
 
 
 STANDARD OPERATING PROCEDURE:
@@ -9,6 +9,9 @@ STANDARD OPERATING PROCEDURE:
 
 !!!CHANGELOG!!!
 
+0.0.7:
+	* Fix ImagePattern converting source image to RGB
+		- Doesn't need to anymore, opencv is BGR
 
 0.0.6:
 	* Moved `make_check_vision` to botutils.extra.

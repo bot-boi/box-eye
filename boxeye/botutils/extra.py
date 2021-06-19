@@ -1,3 +1,4 @@
+import cv2
 import inspect
 import os
 import sys

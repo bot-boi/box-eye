@@ -435,6 +435,9 @@ class ImagePattern(Pattern):
         if self.multi:
             loc = np.where(res >= self.confidence)
             # convert raw to point and reapply offset (p1)
+            # TODO: better multi, mask each match as you go along kind of thing
+            #       that way you can get different matches each time!
+            #       could specify how many matches you want
             points = [(Point(pt[0], pt[1]) + p1) for pt in zip(*loc[::-1])]
             matched = [(pt, pt + Point(pt.x + w, pt.y + h)) for pt in points]
         else:

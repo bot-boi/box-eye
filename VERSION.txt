@@ -12,6 +12,9 @@ STANDARD OPERATING PROCEDURE:
 0.0.7:
 	* Fix ImagePattern converting source image to RGB
 		- Doesn't need to anymore, opencv is BGR
+	* Also included:
+		- set acagui/boxeye (pattern generator) debug level to DEBUG
+		  when using aca.
 
 0.0.6:
 	* Moved `make_check_vision` to botutils.extra.

@@ -7,9 +7,11 @@ import logging
 from .botutils import android
 from .controls import capture, click, drag, keypress
 from .cts import CTS2
+from .point import Point
+
 from .pattern import Pattern
 from .patternlist import PatternList
-from .point import Point
+from .colorpattern import ColorPattern
 from .imagepattern import ImagePattern
 from .textpattern import TextPattern
 

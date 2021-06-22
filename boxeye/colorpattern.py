@@ -1,9 +1,9 @@
 import logging
 import numpy as np
 
-from cts import CTS2
-from pattern import Pattern
-from point import Point
+from .cts import CTS2
+from .pattern import Pattern
+from .point import Point
 
 
 logger = logging.getLogger('boxeye')

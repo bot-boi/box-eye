@@ -200,6 +200,7 @@ class AutoColorAid:
     def _event_capture(self, values):
         """ capture the screen
         """
+        # how to choose which adb client to target?
         raise NotImplementedError
 
     def _event_clipboard(self, values):
@@ -294,7 +295,7 @@ class AutoColorAid:
         pattern_str = "TPat('{}', region={},\n" \
                       "     confidence={}, invert={},\n" \
                       "     scale={}, threshold={},\n" \
-                      "     config={}, name='{}')\n" \
+                      "     config='{}', name='{}')\n" \
                       .format(pattern_text, self._stringify_region(self.region),
                               conf, invert, scale, thresh, config, name)
         self.window["pattern-out"].update(pattern_str)
@@ -454,6 +455,5 @@ class AutoColorAid:
 
 
 if __name__ == "__main__":
-    # TODO: include a default image
     aca = AutoColorAid(default_img_path='./OSRS-Banner.jpg')
     aca.run()

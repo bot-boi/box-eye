@@ -1,4 +1,4 @@
-VERSION: 0.0.7
+VERSION: 1.0.7
 
 
 STANDARD OPERATING PROCEDURE:
@@ -8,6 +8,15 @@ STANDARD OPERATING PROCEDURE:
 
 
 !!!CHANGELOG!!!
+
+1.0.7:
+	* [BREAKAGE] PatternList constructor accepts any number of pattern args
+	  instead of a list.
+	* Split code into several smaller modules.
+	* Removed MAXDEBUG (unused).
+	* Add DEBUG_WAIT_TIME constant.
+	* Remove sphinx documentation (unused).
+	* Fix missing '' in acagui pattern text output.
 
 0.0.7:
 	* Fix ImagePattern converting source image to RGB

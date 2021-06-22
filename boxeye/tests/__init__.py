@@ -4,7 +4,7 @@ import cv2 as cv
 from .. import ImagePattern as IPat
 from .. import Point as P
 from .. import TextPattern as TPat
-from ..botutils import make_check_vision
+from ..botutils.extra import make_check_vision
 
 
 path = os.path.dirname(__file__) + os.sep
@@ -22,8 +22,3 @@ def test_img_pattern():
     p = IPat(path + "chat.png", region=(P(0, 438), P(95, 539)),
              name="CHAT", confidence=0.4)
     check_vision(p, "isvisible", "bet-350k", "game-idle")
-    # check_vision(p, "isvisible", "connection-error", expected=False)  # <- failing
-
-
-# def test_img_pattern_list():
-#     check_vision(game.workout, "workout", "menu")

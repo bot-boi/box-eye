@@ -13,6 +13,7 @@ from .util import grayscale as _grayscale
 logger = logging.getLogger('boxeye')
 
 
+# TODO: support TM_SQDIFF
 class ImagePattern(Pattern):
     """ Search for an image. """
     def __init__(self, target, grayscale=False, mask=None, multi=False,
@@ -39,17 +40,19 @@ class ImagePattern(Pattern):
                 one of the cv2.TM_* constants, see cv2.matchTemplate doc for
                 info.  you will generally want the normalized methods
                 NOTE: TM_CCOEFF_NORMED is *stricter* than the default
-                TODO: support TM_SQDIFF*
         """
         super().__init__(**kwargs)
         if target is None:
-            raise Exception('Got invalid target for {}'.format(self.name))
-        # handle target/grayscale/mode args
+            raise TypeError(f'Tried to load invalid target for {self.name}.')
+
         self.grayscale = grayscale
         self.path = None
         if isinstance(target, str):
             self.path = target
             target = cv.imread(target, cv.IMREAD_COLOR)
+            if target is None:
+                raise FileNotFoundError(f'Could not open {self.path}.')
+
         if grayscale:
             target = _grayscale(target)
         self.target = target
